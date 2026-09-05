@@ -4,6 +4,8 @@ import { buildMirrorForm } from './mirror';
 import { buildRotateForm } from './rotate';
 import { buildCutForm } from './cut';
 import { buildSplitForm } from './split';
+import { buildTextForm } from './text';
+import { buildBooleanForm } from './boolean';
 
 export { buildScaleForm, buildMirrorForm, buildRotateForm, buildCutForm, buildSplitForm };
 
@@ -16,4 +18,12 @@ export function registerTransformForms(panel: Panel): void {
 export function registerCutSplitForms(panel: Panel): void {
   panel.register('cut', 'Cut', buildCutForm, { needsManifold: true });
   panel.register('split', 'Split', buildSplitForm, { needsManifold: true });
+}
+
+export function registerTextForm(panel: Panel): void {
+  panel.register('text', 'Text', buildTextForm, { needsManifold: true });
+}
+
+export function registerBooleanForm(panel: Panel): void {
+  panel.register('boolean', 'Boolean', buildBooleanForm, { needsManifold: true });
 }

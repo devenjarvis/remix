@@ -14,6 +14,7 @@ export class Engine {
   private baseStatus = 'NoError';
   private keys: string[] = [];
   private cache: Manifold[][] = [];
+  font: unknown = null;
 
   setSource(m: TriMesh): void {
     this.invalidateFrom(0);
@@ -53,7 +54,7 @@ export class Engine {
       if (ops.length) r.error = `Source mesh is not manifold (${this.baseStatus}); cannot apply ${ops[0].type}`;
       return r;
     }
-    const ctx: OpContext = { manifold: await getManifold() };
+    const ctx: OpContext = { manifold: await getManifold(), font: this.font ?? undefined };
     let start = 0;
     while (start < ops.length && start < this.keys.length && this.keys[start] === keyOf(ops[start])) start++;
     this.invalidateFrom(start);
