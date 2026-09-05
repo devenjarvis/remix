@@ -272,6 +272,16 @@ describe('fill rule, refine, and multi selections', () => {
     expect(() => validateOp({ ...op, select: { kind: 'multi', selections: [op.select] } })).toThrow(/nest/i);
   });
 
+  it('consolidatePaints keeps paints with different edges apart', () => {
+    const a: PaintOp = { ...fill(1, [5, 5, 10], [0, 0, 1]), edges: 'smooth' };
+    const b: PaintOp = { ...fill(1, [5, 0, 5], [0, -1, 0]), id: 'b', edges: 'triangles' };
+    const c: PaintOp = { ...fill(1, [0, 5, 5], [-1, 0, 0]), id: 'c', edges: 'triangles' };
+    const out = consolidatePaints([a, b, c]);
+    expect(out.length).toBe(2);
+    expect(out[0]).toBe(a);
+    expect(out[1]).toEqual({ ...b, select: { kind: 'multi', selections: [b.select, c.select] } });
+  });
+
   it('consolidatePaints merges consecutive same-color paints and leaves others alone', () => {
     const a = fill(1, [5, 5, 10], [0, 0, 1]);
     const b: PaintOp = { ...fill(1, [5, 0, 5], [0, -1, 0]), id: 'b' };
@@ -285,5 +295,91 @@ describe('fill rule, refine, and multi selections', () => {
     expect(out[2]).toEqual({ id: 'c', type: 'paint', color: 2, select: { kind: 'multi', selections: [c.select, { kind: 'height', min: 0, max: 1 }] } });
     expect(out[3]).toBe(a);
     for (const op of out) validateOp(op);
+  });
+});
+
+describe('smooth edges', () => {
+  const boss = () => manifold().Manifold.cube([10, 10, 10]).add(manifold().Manifold.cylinder(20, 3, 3, 64).translate([5, 5, 5]));
+
+  it('smooth height paint on a cube ends exactly on the plane', async () => {
+    const op: PaintOp = { id: 'h', type: 'paint', color: 2, edges: 'smooth', select: { kind: 'height', min: 0, max: 5 } };
+    const out = await applyOp([cube()], op, ctx);
+    const m = fromManifold(out[0]);
+    expect(m.indices.length / 3).toBe(28);
+    expect(only(slotsWhere(m, (n, c) => c[2] < 5), 2)).toBe(true);
+    expect(only(slotsWhere(m, (n, c) => c[2] > 5), 0)).toBe(true);
+    const zs = new Set<number>();
+    for (let i = 2; i < m.positions.length; i += 3) zs.add(m.positions[i]);
+    expect([...zs].sort()).toEqual([0, 10, 5]);
+    expect(hasPendingPaint(out[0])).toBe(true);
+    expect(validateOp(op)).toEqual(op);
+  });
+
+  it('smooth height paint on a cylinder wall survives a later cut', async () => {
+    const op: PaintOp = { id: 'h', type: 'paint', color: 3, edges: 'smooth', select: { kind: 'height', min: 12.5, max: 30 } };
+    const painted = await applyOp([boss()], op, ctx);
+    const m = fromManifold(painted[0]);
+    const wall = (n: number[], c: number[]) => Math.abs(n[2]) < 0.01 && c[2] > 10.01 && Math.hypot(c[0] - 5, c[1] - 5) > 2.5;
+    expect(only(slotsWhere(m, (n, c) => wall(n, c) && c[2] > 12.5), 3)).toBe(true);
+    expect(only(slotsWhere(m, (n, c) => wall(n, c) && c[2] < 12.5), 0)).toBe(true);
+    expect(m.positions.some((_, i) => i % 3 === 2 && Math.abs(m.positions[i] - 12.5) < 1e-5)).toBe(true);
+    const halves = await applyOp(painted, { id: 'c', type: 'cut', axis: 'x', offset: 5, keep: 'both' }, ctx);
+    expect(halves.length).toBe(2);
+    for (const h of halves) {
+      expect(h.status()).toBe('NoError');
+      const hm = fromManifold(h);
+      expect(only(slotsWhere(hm, (n, c) => wall(n, c) && c[2] > 12.6), 3)).toBe(true);
+      expect(only(slotsWhere(hm, (n, c) => wall(n, c) && c[2] < 12.4), 0)).toBe(true);
+    }
+  });
+
+  it('smooth fill on a cylinder wall ends on the cap crease without splitting', async () => {
+    const op: PaintOp = { ...fill(2, [8, 5, 15], [1, 0, 0]), edges: 'smooth' };
+    op.select = { ...op.select, rule: 'crease' } as PaintOp['select'];
+    const input = boss();
+    const before = fromManifold(input);
+    const m = fromManifold((await applyOp([input], op, ctx))[0]);
+    expect(m.indices).toBe(before.indices);
+    expect(only(slotsWhere(m, (n, c) => Math.abs(n[2]) < 0.01 && c[2] > 10.01), 2)).toBe(true);
+    expect(only(slotsWhere(m, (n, c) => c[2] < 9.9), 0)).toBe(true);
+  });
+
+  it('smooth brush on a refined cube splits the boundary and later paints see the split mesh', async () => {
+    const refined = await applyOp([cube()], { id: 'r', type: 'refine', length: 1 }, ctx);
+    const before = fromManifold(refined[0]);
+    const op: PaintOp = { id: 'b', type: 'paint', color: 3, edges: 'smooth', select: { kind: 'brush', part: 0, points: [[5, 5, 10]], normals: [[0, 0, 1]], radius: 3 } };
+    const out = await applyOp(refined, op, ctx);
+    const m = fromManifold(out[0]);
+    expect(m.indices.length).toBeGreaterThan(before.indices.length);
+    expect(only(slotsWhere(m, (n, c) => n[2] > 0.9 && Math.hypot(c[0] - 5, c[1] - 5) < 2), 3)).toBe(true);
+    expect(only(slotsWhere(m, (n, c) => n[2] > 0.9 && Math.hypot(c[0] - 5, c[1] - 5) > 4), 0)).toBe(true);
+    for (let i = 2; i < m.positions.length; i += 3) expect(m.positions[i]).toBeGreaterThanOrEqual(0);
+    const again = await applyOp(out, { id: 'q', type: 'paint', color: 1, edges: 'smooth', select: { kind: 'height', min: 0, max: 5 } }, ctx);
+    const m2 = fromManifold(again[0]);
+    expect(m2.indices.length).toBeGreaterThan(m.indices.length);
+    expect(only(slotsWhere(m2, (n, c) => n[2] > 0.9 && Math.hypot(c[0] - 5, c[1] - 5) < 2), 3)).toBe(true);
+    expect(only(slotsWhere(m2, (n, c) => c[2] < 5), 1)).toBe(true);
+    const scaled = await applyOp(again, { id: 's', type: 'scale', factors: [2, 2, 2] }, ctx);
+    expect(scaled[0].status()).toBe('NoError');
+    expect(scaled[0].volume()).toBeCloseTo(8000, 2);
+  });
+
+  it('smooth paint on a crease boundary keeps geometry identity', async () => {
+    const c = cube();
+    const before = fromManifold(c);
+    const out = await applyOp([c], { ...fill(1, [5, 5, 10], [0, 0, 1]), edges: 'smooth' }, ctx);
+    const m = fromManifold(out[0]);
+    expect(m.indices).toBe(before.indices);
+    expect(m.positions).toBe(before.positions);
+    expect(only(slotsWhere(m, (n) => n[2] > 0.9), 1)).toBe(true);
+  });
+
+  it('validateOp rejects edges fuzzy and omits the field when absent', () => {
+    expect(() => validateOp({ ...fill(1, [5, 5, 10], [0, 0, 1]), edges: 'fuzzy' })).toThrow(/edges/i);
+    expect('edges' in validateOp(fill(1, [5, 5, 10], [0, 0, 1]))).toBe(false);
+    expect((validateOp({ ...fill(1, [5, 5, 10], [0, 0, 1]), edges: 'triangles' }) as PaintOp).edges).toBe('triangles');
+    const op = paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1');
+    expect(op.edges).toBe('smooth');
+    expect(paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1', 'seed', 'triangles').edges).toBe('triangles');
   });
 });

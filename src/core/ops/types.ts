@@ -49,7 +49,8 @@ export type Selection =
   | { kind: 'all' }
   | { kind: 'multi'; selections: Selection[] };
 
-export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection };
+/** `edges` 'smooth' splits boundary triangles along the selection contour; absent replays as 'triangles'. */
+export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection; edges?: 'smooth' | 'triangles' };
 
 export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | RefineOp | BooleanOp | TextOp | PaintOp;
 

@@ -138,8 +138,11 @@ export function validateOp(v: unknown): Op {
       if (o.color !== undefined) op.color = slot(o.color);
       return op;
     }
-    case 'paint':
-      return { id, type: 'paint', color: slot(o.color), select: selection(o.select) };
+    case 'paint': {
+      const op: Op = { id, type: 'paint', color: slot(o.color), select: selection(o.select) };
+      if (o.edges !== undefined) op.edges = oneOf(o.edges, ['smooth', 'triangles'] as const, 'edges');
+      return op;
+    }
     default:
       return fail(`unknown op type ${String(o.type)}`);
   }
