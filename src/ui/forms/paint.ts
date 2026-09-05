@@ -197,8 +197,11 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     id = newId();
   }
 
+  let offDrag: (() => void) | undefined;
   function updateMode(): void {
     const m = mode.value as Mode;
+    offDrag?.();
+    offDrag = m === 'brush' ? viewport?.onDrag(onDrag) : undefined;
     for (const [k, r] of Object.entries(rows)) r.hidden = k !== m;
     apply.hidden = m === 'fill' || m === 'brush';
     viewport?.setPickMode(m === 'fill' || m === 'brush');
@@ -247,7 +250,6 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   const offChange = app.onChange(refresh);
   const offHover = viewport?.onHover(onHover);
   const offPick = viewport?.onFacePick(onPick);
-  const offDrag = viewport?.onDrag(onDrag);
   refresh();
   updateMode();
 

@@ -92,6 +92,7 @@ main {
 
 #op-form { display: flex; flex-direction: column; gap: 6px; }
 #op-form .row { display: flex; align-items: center; gap: 6px; }
+#op-form [hidden] { display: none !important; }
 #op-form label { color: var(--muted); min-width: 70px; }
 #op-form input[type="number"], #op-form input[type="text"], #op-form select {
   background: var(--bg);
