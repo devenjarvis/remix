@@ -121,9 +121,14 @@ const meshCache = new WeakMap<Manifold, TriMesh>();
  * Returns a handle to the same geometry with `colors` attached but not yet
  * baked into run IDs. Painting stays cheap until a geometry op needs the
  * colors in the manifold, at which point bakePaint builds them in.
+ * `geometry` replaces the handle's own mesh when the colors index different triangles.
  */
-export function withPendingPaint(m: Manifold, colors: Uint8Array): Manifold {
-  const base = fromManifold(m);
+export function withPendingPaint(
+  m: Manifold,
+  colors: Uint8Array,
+  geometry?: { positions: Float32Array; indices: Uint32Array },
+): Manifold {
+  const base = geometry ?? fromManifold(m);
   const handle = m.translate([0, 0, 0]);
   pendingPaint.set(handle, { positions: base.positions, indices: base.indices, colors });
   return handle;

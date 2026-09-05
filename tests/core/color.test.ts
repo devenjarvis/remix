@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Manifold } from 'manifold-3d';
 import { getManifold, manifold } from '../../src/core/manifold';
-import { fromManifold, toManifold, weld, withSlot } from '../../src/core/trimesh';
+import { bakePaint, fromManifold, toManifold, weld, withPendingPaint, withSlot } from '../../src/core/trimesh';
 import { hasPaint } from '../../src/core/color';
 import { triangleNormals } from '../../src/core/select';
 import type { TriMesh } from '../../src/core/types';
@@ -132,5 +132,22 @@ describe('color slots through manifold', () => {
     expect(fromManifold(tagged).colors).toBeUndefined();
     raw.delete();
     tagged.delete();
+  });
+
+  it('withPendingPaint with geometry returns it from fromManifold and bakes it', () => {
+    const m = toManifold(weld(unweldedCube(10)));
+    const refined = fromManifold(m.refineToLength(3));
+    expect(refined.indices.length / 3).toBeGreaterThan(12);
+    const colors = new Uint8Array(refined.indices.length / 3);
+    colors[0] = 1;
+    const handle = withPendingPaint(m, colors, { positions: refined.positions, indices: refined.indices });
+    expect(fromManifold(handle).indices).toBe(refined.indices);
+    expect(fromManifold(handle).positions).toBe(refined.positions);
+    expect(fromManifold(handle).colors).toBe(colors);
+    const baked = bakePaint(handle);
+    expect(baked.status()).toBe('NoError');
+    expect(baked.volume()).toBeCloseTo(1000, 2);
+    expect(fromManifold(baked).indices.length / 3).toBeGreaterThan(12);
+    for (const x of [m, handle, baked]) x.delete();
   });
 });
