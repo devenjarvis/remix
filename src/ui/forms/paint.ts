@@ -10,6 +10,7 @@ import { bounds } from '../../core/trimesh';
 import { actions, el, fmt, hint, numberInput, row, select } from '../dom';
 
 type Mode = 'fill' | 'brush' | 'height' | 'part' | 'all';
+type Edges = NonNullable<PaintOp['edges']>;
 
 const SLOT_COLORS = ['#e04b3a', '#3a8fe0', '#4bb84b', '#f0c419', '#9b59b6', '#e67e22', '#1abc9c', '#e84393', '#7f8c8d', '#2ecc71', '#d35400', '#34495e', '#f39c12', '#16a085', '#c0392b', '#8e44ad'];
 
@@ -24,7 +25,8 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   const addBtn = el('button', { onClick: () => editPalette([...app.palette, { name: `Color ${app.palette.length}`, hex: SLOT_COLORS[(app.palette.length - 1) % SLOT_COLORS.length] }], app.palette.length) }, ['Add']);
   const removeBtn = el('button', { onClick: () => editPalette(app.palette.slice(0, -1), Math.min(active, app.palette.length - 2)) }, ['Remove']);
   const mode = select<Mode>([['fill', 'Fill'], ['brush', 'Brush'], ['height', 'Height'], ['part', 'Part'], ['all', 'All']], 'fill');
-  const rule = select<FillRule>([['crease', 'Stop at creases'], ['seed', 'Similar direction']], 'crease');
+  const rule = select<FillRule>([['seed', 'Similar direction'], ['crease', 'Stop at creases']], 'seed');
+  const edges = select<Edges>([['smooth', 'Smooth'], ['triangles', 'Triangles']], 'smooth');
   const angle = el('input', { type: 'range', min: 0, max: 180, step: 1 });
   angle.value = '30';
   const angleValue = numberInput(30, { step: 1, min: 0 });
@@ -35,6 +37,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   const info = hint();
   const apply = el('button', { class: 'primary', onClick: () => applyPreview() }, ['Apply']);
 
+  const edgesRow = row('Edges', edges);
   const fillRows = el('div', { class: 'stack' }, [row('Rule', rule), row('Angle', angle, angleValue)]);
   const rows: Record<string, HTMLElement> = {
     fill: fillRows,
@@ -52,6 +55,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     rows.brush,
     rows.height,
     rows.part,
+    edgesRow,
     info,
     actions(apply),
   );
@@ -102,7 +106,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
         return null;
     }
   };
-  const op = (sel: Selection): PaintOp => ({ id, type: 'paint', color: active, select: sel });
+  const op = (sel: Selection): PaintOp => ({ id, type: 'paint', color: active, edges: edges.value as Edges, select: sel });
 
   function preview(): void {
     const sel = selection();
@@ -178,7 +182,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   function paintFill(hit: FaceHit): void {
     if (!app.canEditGeometry) return;
     unpin();
-    app.pushOp(paintOpFromHit(hit, active, angle.valueAsNumber, id, rule.value as FillRule));
+    app.pushOp(paintOpFromHit(hit, active, angle.valueAsNumber, id, rule.value as FillRule, edges.value as Edges));
     id = newId();
   }
 
@@ -219,7 +223,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     viewport?.setTriangleColors(part, null);
     if (!points.length) return;
     const thinned = thinStroke(points, normals, r / 4);
-    app.pushOp({ id, type: 'paint', color: active, select: { kind: 'brush', part, points: thinned.points, normals: thinned.normals, radius: r } });
+    app.pushOp({ id, type: 'paint', color: active, edges: edges.value as Edges, select: { kind: 'brush', part, points: thinned.points, normals: thinned.normals, radius: r } });
     id = newId();
   }
 
@@ -229,14 +233,15 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     offDrag?.();
     offDrag = m === 'brush' ? viewport?.onDrag(onDrag) : undefined;
     for (const [k, r] of Object.entries(rows)) r.hidden = k !== m;
+    edgesRow.hidden = m === 'part' || m === 'all';
     apply.hidden = m === 'brush';
     apply.textContent = m === 'fill' ? 'Paint highlighted' : 'Apply';
     viewport?.setPickMode(m === 'fill' || m === 'brush');
     unpin();
     info.textContent = {
-      fill: 'Hover to preview a region and click to paint it. Stop at creases follows smooth curves and stops at sharp edges; Similar direction keeps to faces near the hovered normal. The preview stays while you adjust the angle; [ and ] nudge it by 5°.',
-      brush: 'Drag on the model to paint',
-      height: 'Paints every triangle whose center lies in the Z range',
+      fill: 'Hover to preview a region and click to paint it. Similar direction keeps to faces near the hovered normal; Stop at creases follows smooth curves and stops at sharp edges. The preview stays while you adjust the angle; [ and ] nudge it by 1°. Smooth edges split boundary triangles so the painted region ends on a clean contour.',
+      brush: 'Drag on the model to paint. Smooth edges split boundary triangles along the stroke outline.',
+      height: 'Paints everything in the Z range. Smooth edges split triangles on the planes so the band ends on a straight line.',
       part: 'Paints one whole part',
       all: 'Paints every part',
     }[m];
@@ -255,7 +260,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   const onKey = (e: KeyboardEvent): void => {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) return;
-    if (e.key === '[' || e.key === ']') return setAngle(angle.valueAsNumber + (e.key === ']' ? 5 : -5));
+    if (e.key === '[' || e.key === ']') return setAngle(angle.valueAsNumber + (e.key === ']' ? 1 : -1));
     const n = Number(e.key);
     if (!Number.isInteger(n) || n < 1 || n > 9 || n >= app.palette.length) return;
     setActive(n);
@@ -273,6 +278,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   angleValue.addEventListener('input', () => setAngle(angleValue.valueAsNumber));
   mode.addEventListener('change', updateMode);
   rule.addEventListener('change', showFill);
+  edges.addEventListener('change', preview);
   for (const input of [minZ, maxZ]) input.addEventListener('input', preview);
   partList.addEventListener('change', preview);
   window.addEventListener('keydown', onKey);
