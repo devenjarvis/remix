@@ -51,12 +51,19 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
     return { kind: kind.value as Exclude<Kind, 'mesh'>, size };
   };
 
+  let id = newId();
+  const op = (tool: ToolBody): BooleanOp => ({ id, type: 'boolean', mode: mode.value as Mode, tool, matrix: gizmo.getMatrix() });
+  const preview = () => {
+    const tool = currentTool();
+    app.setPreview(tool && app.bounds ? op(tool) : null, 200);
+  };
   const apply = el('button', {
     class: 'primary',
     onClick: () => {
       const tool = currentTool();
       if (!tool) return;
-      app.pushOp({ id: newId(), type: 'boolean', mode: mode.value as Mode, tool, matrix: gizmo.getMatrix() });
+      app.pushOp(op(tool));
+      id = newId();
     },
   }, ['Apply']);
 
@@ -68,6 +75,7 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
     const tool = currentTool();
     if (tool) gizmo.setTool(tool);
     apply.disabled = !tool || !app.bounds;
+    preview();
   };
 
   file.addEventListener('change', async () => {
@@ -85,6 +93,8 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
     updateTool();
   });
   for (const input of [kind, sx, sy, sz]) input.addEventListener('input', updateTool);
+  mode.addEventListener('change', preview);
+  const offGizmo = gizmo.onTransform(preview);
 
   const onKey = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
@@ -115,8 +125,10 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
   return {
     dispose() {
       unsub();
+      offGizmo();
       window.removeEventListener('keydown', onKey);
       gizmo.dispose();
+      app.setPreview(null);
     },
   };
 }

@@ -13,7 +13,11 @@ export class ToolGizmo {
   private readonly onDrag = (e: { value: boolean }) => {
     this.viewport.controls.enabled = !e.value;
   };
-  private readonly onChange = () => this.viewport.requestRender();
+  private readonly listeners = new Set<() => void>();
+  private readonly onChange = () => {
+    this.viewport.requestRender();
+    for (const cb of this.listeners) cb();
+  };
 
   constructor(private readonly viewport: Viewport) {
     this.mesh = new THREE.Mesh(
@@ -33,6 +37,11 @@ export class ToolGizmo {
     this.mesh.geometry.dispose();
     this.mesh.geometry = buildGeometry(tool);
     this.viewport.requestRender();
+  }
+
+  onTransform(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
   }
 
   setMode(mode: GizmoMode): void {

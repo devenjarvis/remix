@@ -1,6 +1,6 @@
 import type { AppState } from '../app';
 import type { FormHandle } from '../panel';
-import type { Axis } from '../../core/ops/types';
+import type { Axis, ScaleOp } from '../../core/ops/types';
 import type { Vec3 } from '../../core/types';
 import { newId } from '../../core/ops/types';
 import { scaleFactorsForTarget } from '../../core/ops/transform';
@@ -22,7 +22,12 @@ export function buildScaleForm(host: HTMLElement, app: AppState): FormHandle {
     size: [row('Axis', axis), row('Target', target)],
   };
 
-  const apply = el('button', { class: 'primary', onClick: () => app.pushOp({ id: newId(), type: 'scale', factors: factors() }) }, ['Apply']);
+  let id = newId();
+  const op = (): ScaleOp => ({ id, type: 'scale', factors: factors() });
+  const apply = el('button', { class: 'primary', onClick: () => {
+    app.pushOp(op());
+    id = newId();
+  } }, ['Apply']);
 
   host.append(row('Mode', mode), ...Object.values(sections).flat(), size, actions(apply));
 
@@ -47,8 +52,24 @@ export function buildScaleForm(host: HTMLElement, app: AppState): FormHandle {
     apply.disabled = !b;
   }
 
-  mode.addEventListener('change', refresh);
+  const preview = () => app.setPreview(app.bounds ? op() : null);
+  mode.addEventListener('change', () => {
+    refresh();
+    preview();
+  });
+  for (const input of [uniform, ...axes, target]) input.addEventListener('input', preview);
+  axis.addEventListener('change', () => {
+    target.value = '';
+    refresh();
+    preview();
+  });
   const off = app.onChange(refresh);
   refresh();
-  return { dispose: off };
+  preview();
+  return {
+    dispose() {
+      off();
+      app.setPreview(null);
+    },
+  };
 }

@@ -56,8 +56,8 @@ export class Engine {
     this.keys.length = Math.min(i, this.keys.length);
   }
 
-  async evaluate(h: History): Promise<Result> {
-    const ops = h.active;
+  async evaluate(h: History, preview: Op | null = null): Promise<Result> {
+    const ops = preview ? [...h.active, preview] : h.active;
     if (!this.source) return { parts: [], manifold: false, status: 'No source' };
     if (!this.base) {
       const r: Result = { parts: [this.source], manifold: false, status: this.baseStatus };

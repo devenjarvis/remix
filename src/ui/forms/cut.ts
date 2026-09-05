@@ -12,11 +12,14 @@ export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
   const offset = numberInput(0, { step: 0.1 });
   const keep = select<CutOp['keep']>([['both', 'Both'], ['below', 'Below'], ['above', 'Above']], 'both');
   const range = hint();
+  let id = newId();
+  const op = (): CutOp => ({ id, type: 'cut', axis: axis.value as Axis, offset: offset.valueAsNumber, keep: keep.value as CutOp['keep'] });
   const apply = el('button', {
     class: 'primary',
     onClick: () => {
       app.viewport?.hidePlane();
-      app.pushOp({ id: newId(), type: 'cut', axis: axis.value as Axis, offset: offset.valueAsNumber, keep: keep.value as CutOp['keep'] });
+      app.pushOp(op());
+      id = newId();
     },
   }, ['Apply']);
 
@@ -42,7 +45,9 @@ export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
 
   function showPlane(): void {
     const b = app.bounds;
-    if (b) app.viewport?.showPlane(axis.value as Axis, offset.valueAsNumber, b);
+    if (!b) return;
+    app.viewport?.showPlane(axis.value as Axis, offset.valueAsNumber, b);
+    app.setPreview(op());
   }
 
   slider.addEventListener('input', () => {
@@ -58,13 +63,16 @@ export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
     setBounds(true);
     showPlane();
   });
+  keep.addEventListener('change', showPlane);
 
   setBounds(true);
+  showPlane();
   const off = app.onChange(() => setBounds(false));
   return {
     dispose() {
       off();
       app.viewport?.hidePlane();
+      app.setPreview(null);
     },
   };
 }

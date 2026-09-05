@@ -4,6 +4,7 @@ import type { Axis, Op } from '../core/ops/types';
 import type { Bounds, TriMesh, Vec3 } from '../core/types';
 import { bounds, mergeMeshes, placeOnBed } from '../core/trimesh';
 import { repairSmallDefects, type RepairReport } from '../core/repair';
+import { validateOp } from '../core/ops/validate';
 
 export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number };
 
@@ -25,7 +26,10 @@ export class AppState {
   sourceName = 'model';
   result: Result | null = null;
   repair: RepairReport | null = null;
+  /** An uncommitted op evaluated on top of the active history, shown until cleared or applied. */
+  preview: Op | null = null;
   busy = false;
+  private previewTimer: ReturnType<typeof setTimeout> | null = null;
   viewport: ViewportLike | null = null;
   private listeners = new Set<Listener>();
 
@@ -82,7 +86,36 @@ export class AppState {
   }
 
   pushOp(op: Op): void {
+    this.clearPreviewTimer();
+    this.preview = null;
     this.history.push(op);
+  }
+
+  /** Debounced so sliders and gizmo drags do not queue an evaluation per event. Invalid ops are ignored. */
+  setPreview(op: Op | null, delay = 120): void {
+    this.clearPreviewTimer();
+    if (!op) {
+      if (!this.preview) return;
+      this.preview = null;
+      void this.refresh();
+      return;
+    }
+    let valid: Op;
+    try {
+      valid = validateOp(op);
+    } catch {
+      return;
+    }
+    this.previewTimer = setTimeout(() => {
+      this.previewTimer = null;
+      this.preview = valid;
+      void this.refresh();
+    }, delay);
+  }
+
+  private clearPreviewTimer(): void {
+    if (this.previewTimer) clearTimeout(this.previewTimer);
+    this.previewTimer = null;
   }
 
   private pending: Promise<void> | null = null;
@@ -113,7 +146,7 @@ export class AppState {
     this.busy = true;
     this.emit();
     try {
-      this.result = await this.engine.evaluate(this.history);
+      this.result = await this.engine.evaluate(this.history, this.preview);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       this.result = { parts: this.result?.parts ?? [this.source], manifold: false, status: 'Error', error: msg };

@@ -28,3 +28,35 @@ describe('AppState refresh', () => {
     expect(app.bounds?.size[2]).toBeCloseTo(20, 3);
   });
 });
+
+describe('AppState preview', () => {
+  it('evaluates a preview op without committing it, then applies it from cache', async () => {
+    const app = new AppState(new History(), new Engine());
+    app.setSource(unweldedCube(10), 'cube.stl');
+    await app.refresh();
+    app.setPreview({ id: 'p', type: 'scale', factors: [2, 2, 2] }, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    await app.refresh();
+    expect(app.preview?.id).toBe('p');
+    expect(app.bounds?.size).toEqual([20, 20, 20]);
+    expect(app.history.ops.length).toBe(0);
+
+    app.setPreview(null);
+    await app.refresh();
+    expect(app.preview).toBeNull();
+    expect(app.bounds?.size).toEqual([10, 10, 10]);
+
+    app.setPreview({ id: 'q', type: 'rotate', axis: 'z', degrees: NaN }, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(app.preview).toBeNull();
+
+    app.setPreview({ id: 'p', type: 'scale', factors: [2, 2, 2] }, 0);
+    await new Promise((r) => setTimeout(r, 5));
+    await app.refresh();
+    app.pushOp({ id: 'p', type: 'scale', factors: [2, 2, 2] });
+    await app.refresh();
+    expect(app.preview).toBeNull();
+    expect(app.history.ops.length).toBe(1);
+    expect(app.bounds?.size).toEqual([20, 20, 20]);
+  });
+});

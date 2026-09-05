@@ -47,5 +47,8 @@ export class HistoryPanel {
       item.append(del);
       this.list.append(item);
     });
+    if (this.app.preview) {
+      this.list.append(el('li', { class: 'preview' }, [el('span', { class: 'label' }, [`Preview: ${describeOp(this.app.preview)}`])]));
+    }
   }
 }

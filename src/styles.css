@@ -119,6 +119,7 @@ main {
 #history-list li:hover { background: var(--panel-2); }
 #history-list li.current { background: var(--panel-2); border-left: 3px solid var(--accent); }
 #history-list li.undone { opacity: 0.5; }
+#history-list li.preview { font-style: italic; color: var(--accent); cursor: default; }
 #history-list li .label { flex: 1; }
 #history-list li .del { color: var(--muted); border: none; background: none; padding: 0 4px; }
 #history-list li .del:hover { color: var(--danger); }

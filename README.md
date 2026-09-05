@@ -32,3 +32,4 @@ npm run build
 - Recipes are JSON files holding the active history. Imported mesh tools for booleans are stored inline, so a recipe is self-contained.
 - On load, the model is centered on X and Y and dropped so its lowest point sits on the bed.
 - If a loaded mesh is not manifold, the app removes degenerate, duplicate, and flipped triangles and fan-fills boundary loops of up to 32 edges. The status bar reports what was repaired. Larger defects are left alone and geometry ops stay disabled.
+- Every operation form shows a live preview in the viewport and the status bar before Apply. The preview is an uncommitted step on top of the history; closing the form or switching tools discards it.

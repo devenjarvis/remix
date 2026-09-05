@@ -1,6 +1,6 @@
 import type { AppState, FaceHit } from '../app';
 import type { FormHandle } from '../panel';
-import { newId } from '../../core/ops/types';
+import { newId, type TextOp } from '../../core/ops/types';
 import { getFont } from '../../core/font';
 import { actions, el, fmt, hint, numberInput, row, select } from '../dom';
 
@@ -20,19 +20,22 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
   let fontReady = false;
   let disposed = false;
 
+  let id = newId();
+  const op = (h: FaceHit): TextOp => ({
+    id,
+    type: 'text',
+    text: text.value,
+    height: height.valueAsNumber,
+    depth: depth.valueAsNumber,
+    mode: mode.value as Mode,
+    origin: h.point,
+    normal: h.normal,
+    rotation: rotation.valueAsNumber,
+  });
   const apply = el('button', { class: 'primary', onClick: () => {
     if (!hit) return;
-    app.pushOp({
-      id: newId(),
-      type: 'text',
-      text: text.value,
-      height: height.valueAsNumber,
-      depth: depth.valueAsNumber,
-      mode: mode.value as Mode,
-      origin: hit.point,
-      normal: hit.normal,
-      rotation: rotation.valueAsNumber,
-    });
+    app.pushOp(op(hit));
+    id = newId();
   } }, ['Apply']);
 
   host.append(
@@ -53,6 +56,11 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
     }
   }
 
+  function preview(): void {
+    refresh();
+    if (hit && fontReady && app.canEditGeometry) app.setPreview(op(hit), 250);
+  }
+
   getFont().then(
     (font) => {
       if (disposed) return;
@@ -60,7 +68,7 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
       fontReady = true;
       fontHint.textContent = '';
       fontHint.hidden = true;
-      refresh();
+      preview();
     },
     (e: unknown) => {
       if (disposed) return;
@@ -71,9 +79,9 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
   app.viewport?.setPickMode(true);
   const unsubscribe = app.viewport?.onFacePick((h) => {
     hit = h;
-    refresh();
+    preview();
   });
-  text.addEventListener('input', refresh);
+  for (const input of [text, height, depth, mode, rotation]) input.addEventListener('input', preview);
   const off = app.onChange(refresh);
   refresh();
 
@@ -83,6 +91,7 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
       off();
       unsubscribe?.();
       app.viewport?.setPickMode(false);
+      app.setPreview(null);
     },
   };
 }

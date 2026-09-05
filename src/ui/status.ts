@@ -30,7 +30,7 @@ export class StatusBar {
       return;
     }
     const parts = app.parts;
-    this.size.textContent = `${mm(b.size[0])} × ${mm(b.size[1])} × ${mm(b.size[2])} mm`;
+    this.size.textContent = `${mm(b.size[0])} × ${mm(b.size[1])} × ${mm(b.size[2])} mm` + (app.preview ? ' (preview)' : '');
     const n = parts.reduce((s, p) => s + triangleCount(p), 0);
     this.tris.textContent = `${n.toLocaleString()} tris` + (parts.length > 1 ? `, ${parts.length} parts` : '');
     if (app.busy) {
