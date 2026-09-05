@@ -7,7 +7,7 @@ import { repairSmallDefects, type RepairReport } from '../core/repair';
 import { validateOp } from '../core/ops/validate';
 import { defaultPalette, type PaletteSlot } from '../core/color';
 
-export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number };
+export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number; triangle: number };
 
 /** Implemented by src/ui/viewport.ts. Kept as an interface so forms do not import three. */
 export interface ViewportLike {
@@ -18,8 +18,16 @@ export interface ViewportLike {
   onFacePick(cb: (hit: FaceHit) => void): () => void;
   setPickMode(on: boolean): void;
   fitCamera(): void;
-  /** Optional until the viewport renders per-triangle colors. */
-  setPalette?(hexes: string[]): void;
+  /** Hex per slot, Base first; recolors painted triangles in place. */
+  setPalette(hexes: string[]): void;
+  /** Overrides one part's slots without rebuilding geometry; null restores the part's own slots. */
+  setTriangleColors(part: number, colors: Uint8Array | null): void;
+  /** Blends the given triangles toward white; null clears the highlight. */
+  highlightTriangles(part: number, tris: Uint32Array | null): void;
+  /** Fires with the face under the pointer, or null when it leaves the model. Only while pick mode is on. */
+  onHover(cb: (hit: FaceHit | null) => void): () => void;
+  /** Fires while dragging over the model with orbit disabled. Only while pick mode is on and a listener exists. */
+  onDrag(cb: (hit: FaceHit, phase: 'start' | 'move' | 'end') => void): () => void;
 }
 
 type Listener = () => void;
@@ -94,7 +102,7 @@ export class AppState {
   /** Recolors the viewport at once and adds nothing to history. */
   setPalette(p: PaletteSlot[]): void {
     this.palette = p;
-    this.viewport?.setPalette?.(p.map((s) => s.hex));
+    this.viewport?.setPalette(p.map((s) => s.hex));
     this.emit();
   }
 
@@ -166,6 +174,7 @@ export class AppState {
     } finally {
       this.busy = false;
     }
+    this.viewport?.setPalette(this.palette.map((s) => s.hex));
     this.viewport?.setParts(this.result.parts);
     this.emit();
   }

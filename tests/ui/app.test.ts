@@ -77,6 +77,10 @@ describe('AppState palette', () => {
       setPickMode() {},
       fitCamera() {},
       setPalette: (h) => hexes.push(h),
+      setTriangleColors() {},
+      highlightTriangles() {},
+      onHover: () => () => {},
+      onDrag: () => () => {},
     };
     app.setPalette([{ name: 'Base', hex: '#111111' }, { name: 'One', hex: '#ff0000' }]);
     expect(changes).toBe(1);
