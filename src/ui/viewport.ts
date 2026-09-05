@@ -134,7 +134,7 @@ export class Viewport implements ViewportLike {
       const color = new THREE.BufferAttribute(new Float32Array(n * 3), 3);
       geo.setAttribute('color', color);
       geo.computeVertexNormals();
-      geo.computeBoundsTree();
+      geo.computeBoundsTree({ indirect: true });
       const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0.05 });
       const mesh = new THREE.Mesh(geo, mat);
       this.partGroup.add(mesh);
