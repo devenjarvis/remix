@@ -80,6 +80,9 @@ export class AppState {
     this.emit();
     try {
       this.result = await this.engine.evaluate(this.history);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.result = { parts: this.result?.parts ?? [this.source], manifold: false, status: 'Error', error: msg };
     } finally {
       this.busy = false;
     }

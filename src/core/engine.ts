@@ -40,8 +40,18 @@ export class Engine {
     return this.base !== null;
   }
 
+  /** Handlers may pass untouched parts through by reference, so only free objects no earlier level still holds. */
   private invalidateFrom(i: number): void {
-    for (let k = i; k < this.cache.length; k++) for (const m of this.cache[k]) m.delete();
+    const retained = new Set<Manifold>();
+    if (this.base) retained.add(this.base);
+    for (let k = 0; k < i && k < this.cache.length; k++) for (const m of this.cache[k]) retained.add(m);
+    for (let k = i; k < this.cache.length; k++) {
+      for (const m of this.cache[k]) {
+        if (retained.has(m)) continue;
+        retained.add(m);
+        m.delete();
+      }
+    }
     this.cache.length = Math.min(i, this.cache.length);
     this.keys.length = Math.min(i, this.keys.length);
   }
@@ -54,6 +64,7 @@ export class Engine {
       if (ops.length) r.error = `Source mesh is not manifold (${this.baseStatus}); cannot apply ${ops[0].type}`;
       return r;
     }
+    if (!ops.length) return { parts: [this.source], manifold: true, status: this.base.status() };
     const ctx: OpContext = { manifold: await getManifold(), font: this.font ?? undefined };
     let start = 0;
     while (start < ops.length && start < this.keys.length && this.keys[start] === keyOf(ops[start])) start++;
