@@ -9,7 +9,7 @@ import { AppState } from './ui/app';
 import { baseName, download } from './ui/download';
 import { pickFile, readModelFile, wireFileOpen } from './ui/files';
 import { buildLayFlatForm } from './ui/forms/layflat';
-import { registerBooleanForm, registerCutSplitForms, registerTextForm, registerTransformForms } from './ui/forms';
+import { registerBooleanForm, registerCutSplitForms, registerPaintForm, registerTextForm, registerTransformForms } from './ui/forms';
 import { HistoryPanel } from './ui/history';
 import { Panel } from './ui/panel';
 import { StatusBar } from './ui/status';
@@ -35,6 +35,7 @@ async function boot(): Promise<void> {
   registerCutSplitForms(panel);
   registerBooleanForm(panel);
   registerTextForm(panel);
+  registerPaintForm(panel);
 
   const dropHint = $('drop-hint');
 

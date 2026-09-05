@@ -2,7 +2,7 @@ import type { AppState, FaceHit } from '../app';
 import type { FormHandle } from '../panel';
 import { newId, type TextOp } from '../../core/ops/types';
 import { getFont } from '../../core/font';
-import { actions, el, fmt, hint, numberInput, row, select } from '../dom';
+import { actions, colorSelect, el, fmt, hint, numberInput, row, select } from '../dom';
 
 type Mode = 'emboss' | 'engrave';
 
@@ -13,6 +13,7 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
   const depth = numberInput(1, { step: 0.1, min: 0.01 });
   const mode = select<Mode>([['emboss', 'Emboss'], ['engrave', 'Engrave']], 'emboss');
   const rotation = numberInput(0, { step: 1 });
+  const color = colorSelect(app, 0);
   const pickHint = hint('Click a face to place the text');
   const fontHint = hint('Loading font…');
 
@@ -31,6 +32,7 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
     origin: h.point,
     normal: h.normal,
     rotation: rotation.valueAsNumber,
+    ...(Number(color.value) > 0 ? { color: Number(color.value) } : {}),
   });
   const apply = el('button', { class: 'primary', onClick: () => {
     if (!hit) return;
@@ -44,6 +46,7 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
     row('Depth', depth),
     row('Mode', mode),
     row('Rotation', rotation),
+    row('Color', color),
     pickHint,
     fontHint,
     actions(apply),
@@ -81,7 +84,7 @@ export function buildTextForm(host: HTMLElement, app: AppState): FormHandle {
     hit = h;
     preview();
   });
-  for (const input of [text, height, depth, mode, rotation]) input.addEventListener('input', preview);
+  for (const input of [text, height, depth, mode, rotation, color]) input.addEventListener('input', preview);
   const off = app.onChange(refresh);
   refresh();
 

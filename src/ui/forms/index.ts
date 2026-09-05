@@ -6,8 +6,9 @@ import { buildCutForm } from './cut';
 import { buildSplitForm } from './split';
 import { buildTextForm } from './text';
 import { buildBooleanForm } from './boolean';
+import { buildPaintForm, registerPaintForm } from './paint';
 
-export { buildScaleForm, buildMirrorForm, buildRotateForm, buildCutForm, buildSplitForm };
+export { buildScaleForm, buildMirrorForm, buildRotateForm, buildCutForm, buildSplitForm, buildPaintForm, registerPaintForm };
 
 export function registerTransformForms(panel: Panel): void {
   panel.register('scale', 'Scale', buildScaleForm, { needsManifold: true });

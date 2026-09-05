@@ -1,5 +1,5 @@
 import type { AppState } from './app';
-import { describeOp } from '../core/ops/types';
+import { describeOp, type Op } from '../core/ops/types';
 import { el } from './dom';
 
 export class HistoryPanel {
@@ -23,6 +23,12 @@ export class HistoryPanel {
     this.render();
   }
 
+  private label(op: Op): string {
+    if (op.type !== 'paint') return describeOp(op);
+    const slot = this.app.palette[op.color];
+    return `Paint ${op.color === 0 ? 'Base' : slot?.name ?? `slot ${op.color}`} (${op.select.kind})`;
+  }
+
   render(): void {
     const { history } = this.app;
     this.undoBtn.disabled = history.cursor === 0;
@@ -36,7 +42,7 @@ export class HistoryPanel {
     history.ops.forEach((op, i) => {
       const active = i < history.cursor;
       const item = el('li', { class: [i === history.cursor - 1 ? 'current' : '', active ? '' : 'undone'].join(' ').trim() }, [
-        el('span', { class: 'label' }, [describeOp(op)]),
+        el('span', { class: 'label' }, [this.label(op)]),
       ]);
       const del = el('button', { class: 'del', title: 'Delete this step' }, ['×']);
       del.addEventListener('click', (e) => {
@@ -48,7 +54,7 @@ export class HistoryPanel {
       this.list.append(item);
     });
     if (this.app.preview) {
-      this.list.append(el('li', { class: 'preview' }, [el('span', { class: 'label' }, [`Preview: ${describeOp(this.app.preview)}`])]));
+      this.list.append(el('li', { class: 'preview' }, [el('span', { class: 'label' }, [`Preview: ${this.label(this.app.preview)}`])]));
     }
   }
 }

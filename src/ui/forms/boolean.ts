@@ -5,7 +5,7 @@ import { newId } from '../../core/ops/types';
 import type { TriMesh, Vec3 } from '../../core/types';
 import { bounds } from '../../core/trimesh';
 import { loadModel } from '../../io/load';
-import { actions, el, fmt, hint, numberInput, row, select } from '../dom';
+import { actions, colorSelect, el, fmt, hint, numberInput, row, select } from '../dom';
 import { ToolGizmo, type GizmoMode } from '../gizmo';
 import { Viewport } from '../viewport';
 
@@ -25,6 +25,7 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
   const sx = numberInput(10, { min: 0.01 });
   const sy = numberInput(10, { min: 0.01 });
   const sz = numberInput(10, { min: 0.01 });
+  const color = colorSelect(app, 0);
   const sizeRow = row('Size (mm)', sx, sy, sz);
   const file = el('input', { type: 'file', accept: '.stl,.obj,.3mf' });
   const fileInfo = hint('No file loaded');
@@ -52,7 +53,14 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
   };
 
   let id = newId();
-  const op = (tool: ToolBody): BooleanOp => ({ id, type: 'boolean', mode: mode.value as Mode, tool, matrix: gizmo.getMatrix() });
+  const op = (tool: ToolBody): BooleanOp => ({
+    id,
+    type: 'boolean',
+    mode: mode.value as Mode,
+    tool,
+    matrix: gizmo.getMatrix(),
+    ...(Number(color.value) > 0 ? { color: Number(color.value) } : {}),
+  });
   const preview = () => {
     const tool = currentTool();
     app.setPreview(tool && app.bounds ? op(tool) : null, 200);
@@ -94,6 +102,7 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
   });
   for (const input of [kind, sx, sy, sz]) input.addEventListener('input', updateTool);
   mode.addEventListener('change', preview);
+  color.addEventListener('change', preview);
   const offGizmo = gizmo.onTransform(preview);
 
   const onKey = (e: KeyboardEvent) => {
@@ -112,6 +121,7 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
     fileRow,
     fileInfo,
     row('Gizmo', modeButtons.translate, modeButtons.rotate, modeButtons.scale),
+    row('Color', color),
     actions(apply),
   );
   host.tabIndex = -1;

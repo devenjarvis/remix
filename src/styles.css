@@ -106,6 +106,10 @@ main {
 #op-form .hint { color: var(--muted); font-size: 12px; }
 #op-form .actions { display: flex; gap: 6px; margin-top: 4px; }
 #op-form .parts { display: flex; flex-direction: column; gap: 4px; }
+#op-form .swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+#op-form .swatch { display: flex; align-items: center; gap: 4px; padding: 2px 6px; }
+#op-form .swatch .chip { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.25); }
+#op-form input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
 
 #history-list { list-style: none; margin: 0; padding: 0; }
 #history-list li {
