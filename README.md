@@ -24,3 +24,9 @@ npm run build
 - manifold-3d for all geometry operations
 - opentype.js for text outlines
 - fflate for the 3MF writer
+
+## Notes
+
+- All geometry runs on the main thread through manifold-3d WASM. On a 320k-triangle model, loading, manifold conversion, a boolean, and a plane cut each take under one second. A Web Worker can be added later if larger models make the UI stall.
+- Loading a file with several touching shells (for example a 3MF exported after a cut) shows the file's own triangle count until an operation is applied; manifold-3d then merges coincident faces.
+- Recipes are JSON files holding the active history. Imported mesh tools for booleans are stored inline, so a recipe is self-contained.
