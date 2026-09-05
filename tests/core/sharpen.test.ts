@@ -117,6 +117,29 @@ describe('sharpen', () => {
     expectManifoldWithVolume(half.mesh, 1000);
   });
 
+  it('retriangulates forced splits from a neighbor into 2 and 4 pieces with winding kept', () => {
+    const m: TriMesh = {
+      positions: Float32Array.from([0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 2, 0]),
+      indices: Uint32Array.from([0, 1, 2, 0, 2, 3]),
+    };
+    const field = Float32Array.from([1, -1, 1, -1, 1, 1]);
+    const { mesh, source, inside } = splitByField(m, field);
+    expect(mesh.positions.length / 3).toBe(8);
+    expect(mesh.indices.length / 3).toBe(7);
+    expect(Array.from(source).filter((s) => s === 0).length).toBe(4);
+    expect(Array.from(source).filter((s) => s === 1).length).toBe(3);
+    const n = triangleNormals(mesh);
+    for (let t = 0; t < 7; t++) expect(n[t * 3 + 2]).toBeGreaterThan(0.99);
+    for (let t = 0; t < 7; t++) {
+      const c = triangleCentroid(mesh, t);
+      if (source[t] === 0) expect(inside[t]).toBe(Math.hypot(c[0] - 2, c[1]) > 0.9 ? 1 : 0);
+      else expect(inside[t]).toBe(Math.hypot(c[0], c[1]) > 0.9 ? 1 : 0);
+    }
+    const forcedOnly = splitByField(m, Float32Array.from([1, 1, 1, -1, 1, 1]));
+    expect(forcedOnly.mesh.indices.length / 3).toBe(2 + 3);
+    expect(Array.from(forcedOnly.inside).slice(0, 2)).toEqual([1, 1]);
+  });
+
   it('remaps colors through source', () => {
     const m = cube();
     m.colors = new Uint8Array(12);
