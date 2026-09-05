@@ -1,3 +1,6 @@
+import './cut';
+import './boolean';
+import './text';
 import './transform';
 import './layflat';
 
