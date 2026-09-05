@@ -63,3 +63,11 @@ describe('text', () => {
     ).rejects.toThrow(/font/i);
   });
 });
+
+describe('text with no parts', () => {
+  it('returns live embossed text', async () => {
+    const parts = await applyOp([], { id: 't', type: 'text', text: 'A', height: 8, depth: 1, mode: 'emboss', origin: [0, 0, 0], normal: [0, 0, 1], rotation: 0 }, ctx);
+    expect(parts.length).toBe(1);
+    expect(parts[0].volume()).toBeGreaterThan(0);
+  });
+});

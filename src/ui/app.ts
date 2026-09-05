@@ -69,7 +69,25 @@ export class AppState {
     this.history.push(op);
   }
 
-  async refresh(): Promise<void> {
+  private pending: Promise<void> | null = null;
+  private dirty = false;
+
+  /** Evaluations are serialized: a call during a running evaluation schedules exactly one more run. */
+  refresh(): Promise<void> {
+    this.dirty = true;
+    if (!this.pending) {
+      this.pending = (async () => {
+        while (this.dirty) {
+          this.dirty = false;
+          await this.evaluateOnce();
+        }
+        this.pending = null;
+      })();
+    }
+    return this.pending;
+  }
+
+  private async evaluateOnce(): Promise<void> {
     if (!this.source) {
       this.result = null;
       this.viewport?.setParts([]);

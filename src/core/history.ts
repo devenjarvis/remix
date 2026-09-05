@@ -1,4 +1,5 @@
 import type { Op, Recipe } from './ops/types';
+import { validateRecipe } from './ops/validate';
 
 type Listener = () => void;
 
@@ -23,6 +24,13 @@ export class History {
   push(op: Op): void {
     this.ops = this.ops.slice(0, this.cursor);
     this.ops.push(op);
+    this.cursor = this.ops.length;
+    this.emit();
+  }
+
+  pushAll(ops: Op[]): void {
+    if (!ops.length) return;
+    this.ops = this.ops.slice(0, this.cursor).concat(ops);
     this.cursor = this.ops.length;
     this.emit();
   }
@@ -66,10 +74,10 @@ export class History {
     return { version: 1, ops: this.active.map((o) => ({ ...o })) };
   }
 
-  static fromJSON(r: Recipe): History {
-    if (r.version !== 1) throw new Error(`Unsupported recipe version: ${String(r.version)}`);
+  static fromJSON(r: unknown): History {
+    const recipe = validateRecipe(r);
     const h = new History();
-    h.ops = r.ops.map((o) => ({ ...o }));
+    h.ops = recipe.ops.map((o) => ({ ...o }));
     h.cursor = h.ops.length;
     return h;
   }

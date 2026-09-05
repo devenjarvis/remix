@@ -36,3 +36,12 @@ describe('loadModel', () => {
     await expect(loadModel('cube.step', new ArrayBuffer(0))).rejects.toThrow(/unsupported/i);
   });
 });
+
+describe('loadModel validation', () => {
+  it('rejects out-of-range indices and non-finite coordinates', async () => {
+    const bad = new TextEncoder().encode('v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 9\n');
+    await expect(loadModel('bad.obj', bad.buffer as ArrayBuffer)).rejects.toThrow(/exceeds vertex count|Non-finite/);
+    const nan = new TextEncoder().encode('v 0 0 0\nv 1 0 0\nv 0 nan 0\nf 1 2 3\n');
+    await expect(loadModel('nan.obj', nan.buffer as ArrayBuffer)).rejects.toThrow(/Non-finite/);
+  });
+});

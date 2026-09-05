@@ -3,7 +3,6 @@ import { Engine } from './core/engine';
 import { History } from './core/history';
 import { getFont } from './core/font';
 import { getManifold } from './core/manifold';
-import type { Recipe } from './core/ops/types';
 import { exportModel, type ExportFormat } from './io/save';
 import { AppState } from './ui/app';
 import { baseName, download } from './ui/download';
@@ -86,12 +85,11 @@ async function boot(): Promise<void> {
     const file = await pickFile($<HTMLInputElement>('recipe-input'));
     if (!file) return;
     try {
-      const recipe = JSON.parse(await file.text()) as Recipe;
-      const parsed = History.fromJSON(recipe);
+      const parsed = History.fromJSON(JSON.parse(await file.text()));
       if (parsed.ops.some((op) => op.type === 'text') && !app.engine.font) {
         app.engine.font = await getFont();
       }
-      for (const op of parsed.ops) app.history.push(op);
+      app.history.pushAll(parsed.ops);
       status.setMessage(`Applied ${parsed.ops.length} steps from ${file.name}`, 'ok');
     } catch (e) {
       status.setMessage(`Could not apply recipe: ${e instanceof Error ? e.message : String(e)}`, 'err');

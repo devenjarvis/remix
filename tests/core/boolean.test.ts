@@ -70,3 +70,13 @@ describe('boolean', () => {
     expect(IDENTITY.length).toBe(16);
   });
 });
+
+describe('boolean with no parts', () => {
+  it('returns a live tool for union and nothing for subtract', async () => {
+    const parts = await applyOp([], { id: 'b', type: 'boolean', mode: 'union', tool: { kind: 'box', size: [10, 10, 10] }, matrix: IDENTITY }, ctx);
+    expect(parts.length).toBe(1);
+    expect(parts[0].volume()).toBeCloseTo(1000, 3);
+    const none = await applyOp([], { id: 'b', type: 'boolean', mode: 'subtract', tool: { kind: 'box', size: [10, 10, 10] }, matrix: IDENTITY }, ctx);
+    expect(none.length).toBe(0);
+  });
+});

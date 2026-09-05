@@ -105,3 +105,17 @@ export function mergeMeshes(meshes: TriMesh[]): TriMesh {
   }
   return { positions, indices };
 }
+
+export function validateMesh(m: TriMesh): TriMesh {
+  if (m.positions.length % 3 !== 0) throw new Error('Vertex data is not a multiple of 3');
+  if (m.indices.length % 3 !== 0) throw new Error('Index data is not a multiple of 3');
+  if (m.indices.length === 0) throw new Error('Mesh has no triangles');
+  for (let i = 0; i < m.positions.length; i++) {
+    if (!Number.isFinite(m.positions[i])) throw new Error(`Non-finite coordinate at vertex ${Math.floor(i / 3)}`);
+  }
+  const nv = m.positions.length / 3;
+  for (let i = 0; i < m.indices.length; i++) {
+    if (m.indices[i] >= nv) throw new Error(`Triangle index ${m.indices[i]} exceeds vertex count ${nv}`);
+  }
+  return m;
+}

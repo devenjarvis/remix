@@ -12,9 +12,9 @@ function overlaps(a: Manifold, b: Manifold): boolean {
 
 registerOp<BooleanOp>('boolean', (input, op) => {
   const tool = toolManifold(op.tool, op.matrix);
+  if (!input.length) return op.mode === 'union' ? [tool] : (tool.delete(), []);
   try {
     if (op.mode === 'union') {
-      if (!input.length) return [tool];
       let target = input.findIndex((p) => overlaps(p, tool));
       if (target < 0) target = 0;
       return input.map((p, i) => (i === target ? p.add(tool) : p));

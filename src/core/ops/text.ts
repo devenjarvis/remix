@@ -110,8 +110,8 @@ registerOp<TextOp>('text', (input, op, ctx) => {
   if (!font) throw new Error('Font not loaded');
   if (!op.text.trim()) throw new Error('Text is empty');
   const tool = placed(op, font);
+  if (!input.length) return op.mode === 'emboss' ? [tool] : (tool.delete(), []);
   try {
-    if (!input.length) return [tool];
     let target = input.findIndex((p) => overlaps(p, tool));
     if (target < 0) target = 0;
     return input.map((p, i) => (i !== target ? p : op.mode === 'emboss' ? p.add(tool) : p.subtract(tool)));
