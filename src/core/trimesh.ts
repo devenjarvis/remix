@@ -119,3 +119,19 @@ export function validateMesh(m: TriMesh): TriMesh {
   }
   return m;
 }
+
+/** Translates the mesh so its XY center is at the origin and its lowest point is at z=0. */
+export function placeOnBed(m: TriMesh): TriMesh {
+  const b = bounds(m);
+  const dx = (b.min[0] + b.max[0]) / 2;
+  const dy = (b.min[1] + b.max[1]) / 2;
+  const dz = b.min[2];
+  if (dx === 0 && dy === 0 && dz === 0) return m;
+  const positions = new Float32Array(m.positions.length);
+  for (let i = 0; i < positions.length; i += 3) {
+    positions[i] = m.positions[i] - dx;
+    positions[i + 1] = m.positions[i + 1] - dy;
+    positions[i + 2] = m.positions[i + 2] - dz;
+  }
+  return { positions, indices: m.indices };
+}

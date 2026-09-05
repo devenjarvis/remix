@@ -2,7 +2,8 @@ import type { Engine, Result } from '../core/engine';
 import type { History } from '../core/history';
 import type { Axis, Op } from '../core/ops/types';
 import type { Bounds, TriMesh, Vec3 } from '../core/types';
-import { bounds, mergeMeshes } from '../core/trimesh';
+import { bounds, mergeMeshes, placeOnBed } from '../core/trimesh';
+import { repairSmallDefects, type RepairReport } from '../core/repair';
 
 export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number };
 
@@ -23,6 +24,7 @@ export class AppState {
   source: TriMesh | null = null;
   sourceName = 'model';
   result: Result | null = null;
+  repair: RepairReport | null = null;
   busy = false;
   viewport: ViewportLike | null = null;
   private listeners = new Set<Listener>();
@@ -59,9 +61,23 @@ export class AppState {
   }
 
   setSource(m: TriMesh, name: string): void {
-    this.source = m;
+    let mesh = placeOnBed(m);
+    this.repair = null;
+    this.engine.setSource(mesh);
+    if (!this.engine.sourceManifold) {
+      const { mesh: fixed, report } = repairSmallDefects(mesh);
+      if (report.removedTriangles || report.filledHoles) {
+        this.engine.setSource(fixed);
+        if (this.engine.sourceManifold) {
+          mesh = fixed;
+          this.repair = report;
+        } else {
+          this.engine.setSource(mesh);
+        }
+      }
+    }
+    this.source = mesh;
     this.sourceName = name;
-    this.engine.setSource(m);
     this.history.clear();
   }
 

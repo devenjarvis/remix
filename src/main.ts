@@ -46,7 +46,14 @@ async function boot(): Promise<void> {
       await app.refresh();
       viewport.fitCamera();
       dropHint.classList.add('hidden');
-      status.setMessage(app.canEditGeometry ? '' : 'Source mesh is not manifold: booleans, cut, split, and text are disabled', app.canEditGeometry ? '' : 'warn');
+      if (!app.canEditGeometry) {
+        status.setMessage('Source mesh is not manifold: booleans, cut, split, and text are disabled', 'warn');
+      } else if (app.repair) {
+        const r = app.repair;
+        status.setMessage(`Repaired mesh: removed ${r.removedTriangles} bad triangle(s), filled ${r.filledHoles} small hole(s)`, 'ok');
+      } else {
+        status.setMessage('');
+      }
     } catch (e) {
       status.setMessage(`Could not load ${file.name}: ${e instanceof Error ? e.message : String(e)}`, 'err');
     }

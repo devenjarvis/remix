@@ -50,7 +50,7 @@ export class StatusBar {
       this.manifold.textContent = 'Manifold';
       this.manifold.className = 'ok';
     } else {
-      this.manifold.textContent = `Not manifold (${r.status})`;
+      this.manifold.textContent = /not manifold/i.test(r.status) ? 'Not manifold' : `Not manifold (${r.status})`;
       this.manifold.className = 'warn';
     }
   }
