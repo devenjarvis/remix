@@ -21,6 +21,8 @@ export type BooleanOp = OpBase & {
   mode: 'union' | 'subtract' | 'intersect';
   tool: ToolBody;
   matrix: number[];
+  /** Color slot for surfaces the tool creates; omitted or 0 means Base. */
+  color?: number;
 };
 
 export type TextOp = OpBase & {
@@ -32,9 +34,20 @@ export type TextOp = OpBase & {
   origin: Vec3;
   normal: Vec3;
   rotation: number;
+  /** Color slot for surfaces the text creates; omitted or 0 means Base. */
+  color?: number;
 };
 
-export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | BooleanOp | TextOp;
+export type Selection =
+  | { kind: 'fill'; part: number; point: Vec3; normal: Vec3; angle: number }
+  | { kind: 'brush'; part: number; points: Vec3[]; normals: Vec3[]; radius: number }
+  | { kind: 'height'; min: number; max: number }
+  | { kind: 'part'; index: number }
+  | { kind: 'all' };
+
+export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection };
+
+export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | BooleanOp | TextOp | PaintOp;
 
 export type OpContext = { manifold: ManifoldToplevel; font?: unknown };
 
@@ -69,6 +82,8 @@ export function describeOp(op: Op): string {
     }
     case 'text':
       return `${op.mode === 'emboss' ? 'Emboss' : 'Engrave'} "${op.text}"`;
+    case 'paint':
+      return `Paint ${op.color === 0 ? 'Base' : `slot ${op.color}`} (${op.select.kind})`;
     default:
       return `Unknown op ${(op as OpBase).type}`;
   }

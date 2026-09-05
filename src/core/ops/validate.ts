@@ -1,4 +1,5 @@
-import type { Op, Recipe, ToolBody } from './types';
+import type { Op, Recipe, Selection, ToolBody } from './types';
+import { MAX_SLOTS } from '../color';
 
 const AXES = ['x', 'y', 'z'];
 
@@ -23,6 +24,49 @@ function axis(v: unknown): 'x' | 'y' | 'z' {
 function oneOf<T extends string>(v: unknown, allowed: readonly T[], what: string): T {
   if (typeof v !== 'string' || !allowed.includes(v as T)) fail(`${what} must be one of ${allowed.join(', ')}`);
   return v as T;
+}
+
+function slot(v: unknown, what = 'color'): number {
+  if (!Number.isInteger(v) || (v as number) < 0 || (v as number) > MAX_SLOTS) fail(`${what} must be an integer slot from 0 to ${MAX_SLOTS}`);
+  return v as number;
+}
+
+function index(v: unknown, what: string): number {
+  if (!Number.isInteger(v) || (v as number) < 0) fail(`${what} must be a non-negative integer`);
+  return v as number;
+}
+
+function unitVec(v: unknown, what: string): [number, number, number] {
+  if (!isVec3(v) || Math.hypot(...v) === 0) fail(`${what} must be a non-zero vector`);
+  return v;
+}
+
+function selection(v: unknown): Selection {
+  if (!v || typeof v !== 'object') fail('paint select must be an object');
+  const s = v as Record<string, unknown>;
+  switch (s.kind) {
+    case 'fill':
+      if (!isVec3(s.point)) fail('fill point must be a vector');
+      return { kind: 'fill', part: index(s.part, 'part'), point: s.point, normal: unitVec(s.normal, 'fill normal'), angle: num(s.angle, 'angle', 0) };
+    case 'brush': {
+      if (!Array.isArray(s.points) || !s.points.length || !s.points.every(isVec3)) fail('brush points must be a non-empty list of vectors');
+      if (!Array.isArray(s.normals) || s.normals.length !== s.points.length) fail('brush normals must match points');
+      const normals = s.normals.map((n) => unitVec(n, 'brush normal'));
+      return { kind: 'brush', part: index(s.part, 'part'), points: s.points as [number, number, number][], normals, radius: num(s.radius, 'radius', 0.001) };
+    }
+    case 'height': {
+      const min = num(s.min, 'min');
+      const max = num(s.max, 'max');
+      if (max < min) fail('height max must be at least min');
+      return { kind: 'height', min, max };
+    }
+    case 'part':
+      return { kind: 'part', index: index(s.index, 'index') };
+    case 'all':
+      return { kind: 'all' };
+    default:
+      return fail(`unknown selection kind ${String(s.kind)}`);
+  }
 }
 
 function tool(v: unknown): ToolBody {
@@ -64,12 +108,14 @@ export function validateOp(v: unknown): Op {
       return { id, type: 'split', keep: o.keep as number[] | 'all' };
     case 'boolean': {
       if (!Array.isArray(o.matrix) || o.matrix.length !== 16 || !o.matrix.every((n) => typeof n === 'number' && Number.isFinite(n))) fail('matrix must be 16 finite numbers');
-      return { id, type: 'boolean', mode: oneOf(o.mode, ['union', 'subtract', 'intersect'] as const, 'mode'), tool: tool(o.tool), matrix: o.matrix as number[] };
+      const op: Op = { id, type: 'boolean', mode: oneOf(o.mode, ['union', 'subtract', 'intersect'] as const, 'mode'), tool: tool(o.tool), matrix: o.matrix as number[] };
+      if (o.color !== undefined) op.color = slot(o.color);
+      return op;
     }
-    case 'text':
+    case 'text': {
       if (typeof o.text !== 'string' || !o.text.trim()) fail('text must be a non-empty string');
       if (!isVec3(o.origin) || !isVec3(o.normal) || Math.hypot(...o.normal) === 0) fail('text needs origin and a non-zero normal');
-      return {
+      const op: Op = {
         id,
         type: 'text',
         text: o.text,
@@ -80,6 +126,11 @@ export function validateOp(v: unknown): Op {
         normal: o.normal,
         rotation: num(o.rotation ?? 0, 'rotation'),
       };
+      if (o.color !== undefined) op.color = slot(o.color);
+      return op;
+    }
+    case 'paint':
+      return { id, type: 'paint', color: slot(o.color), select: selection(o.select) };
     default:
       return fail(`unknown op type ${String(o.type)}`);
   }

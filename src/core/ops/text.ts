@@ -2,6 +2,7 @@ import type { Manifold } from 'manifold-3d';
 import type { Font } from 'opentype.js';
 import { faceFrame, type Mat4 } from '../mat4';
 import { manifold } from '../manifold';
+import { withSlot } from '../trimesh';
 import { registerOp } from './registry';
 import type { TextOp } from './types';
 
@@ -95,7 +96,10 @@ function placed(op: TextOp, font: Font): Manifold {
   const frame: Mat4 = faceFrame(op.origin, op.normal, op.rotation);
   const out = shifted.transform(frame as Parameters<Manifold['transform']>[0]);
   shifted.delete();
-  return out;
+  if (!op.color) return out;
+  const tagged = withSlot(out, op.color);
+  out.delete();
+  return tagged;
 }
 
 function overlaps(a: Manifold, b: Manifold): boolean {
