@@ -1,0 +1,151 @@
+:root {
+  --bg: #1b1d22;
+  --panel: #23262d;
+  --panel-2: #2b2f38;
+  --border: #363b46;
+  --text: #e6e8ec;
+  --muted: #9aa1ad;
+  --accent: #5aa9ff;
+  --accent-2: #3f8ae0;
+  --danger: #ff6b6b;
+  --ok: #52d273;
+  --warn: #f5b942;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+#app {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100vh;
+}
+
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand { font-weight: 600; margin-right: 10px; }
+.spacer { flex: 1; }
+
+button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font: inherit;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent-2); border-color: var(--accent-2); }
+button.active { background: var(--accent-2); border-color: var(--accent); }
+button.danger { color: var(--danger); }
+
+.menu { position: relative; }
+.menu-items {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  flex-direction: column;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 140px;
+}
+.menu.open .menu-items { display: flex; }
+.menu-items button { border: none; border-radius: 0; text-align: left; }
+
+main {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  min-height: 0;
+}
+
+#panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+#panel section { padding: 10px; border-bottom: 1px solid var(--border); }
+#panel h2 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; letter-spacing: 0.05em; }
+
+#op-buttons { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+
+#op-form { display: flex; flex-direction: column; gap: 6px; }
+#op-form .row { display: flex; align-items: center; gap: 6px; }
+#op-form label { color: var(--muted); min-width: 70px; }
+#op-form input[type="number"], #op-form input[type="text"], #op-form select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+  width: 100%;
+}
+#op-form input[type="range"] { flex: 1; }
+#op-form .hint { color: var(--muted); font-size: 12px; }
+#op-form .actions { display: flex; gap: 6px; margin-top: 4px; }
+#op-form .parts { display: flex; flex-direction: column; gap: 4px; }
+
+#history-list { list-style: none; margin: 0; padding: 0; }
+#history-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+#history-list li:hover { background: var(--panel-2); }
+#history-list li.current { background: var(--panel-2); border-left: 3px solid var(--accent); }
+#history-list li.undone { opacity: 0.5; }
+#history-list li .label { flex: 1; }
+#history-list li .del { color: var(--muted); border: none; background: none; padding: 0 4px; }
+#history-list li .del:hover { color: var(--danger); }
+
+#viewport { position: relative; min-width: 0; min-height: 0; }
+#viewport canvas { display: block; width: 100%; height: 100%; }
+#viewport.dragover { outline: 2px dashed var(--accent); outline-offset: -6px; }
+#drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  pointer-events: none;
+}
+#drop-hint.hidden { display: none; }
+
+#status {
+  display: flex;
+  gap: 16px;
+  padding: 4px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+#status .ok { color: var(--ok); }
+#status .warn { color: var(--warn); }
+#status .err { color: var(--danger); }

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Remix</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="toolbar">
+        <span class="brand">Remix</span>
+        <button id="btn-open">Open</button>
+        <input id="file-input" type="file" accept=".stl,.obj,.3mf" hidden />
+        <div class="menu">
+          <button id="btn-export">Export</button>
+          <div class="menu-items" id="export-menu">
+            <button data-format="stl">STL (binary)</button>
+            <button data-format="obj">OBJ</button>
+            <button data-format="3mf">3MF</button>
+          </div>
+        </div>
+        <span class="spacer"></span>
+        <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+        <button id="btn-redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+        <button id="btn-save-recipe">Save Recipe</button>
+        <button id="btn-apply-recipe">Apply Recipe</button>
+        <input id="recipe-input" type="file" accept=".json" hidden />
+      </header>
+      <main>
+        <aside id="panel">
+          <section id="operations">
+            <h2>Operations</h2>
+            <div id="op-buttons"></div>
+            <div id="op-form"></div>
+          </section>
+          <section id="history">
+            <h2>History</h2>
+            <ol id="history-list"></ol>
+          </section>
+        </aside>
+        <div id="viewport">
+          <div id="drop-hint">Drop an STL, OBJ, or 3MF file here, or click Open.</div>
+        </div>
+      </main>
+      <footer id="status">
+        <span id="status-size">No model</span>
+        <span id="status-tris"></span>
+        <span id="status-manifold"></span>
+        <span id="status-msg"></span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
