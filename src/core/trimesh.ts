@@ -1,6 +1,7 @@
 import type { Manifold } from 'manifold-3d';
 import { manifold } from './manifold';
 import type { Bounds, TriMesh, Vec3 } from './types';
+import { MAX_SLOTS } from './color';
 
 export function weld(m: TriMesh, tol = 1e-5): TriMesh {
   const inv = 1 / tol;
@@ -21,17 +22,21 @@ export function weld(m: TriMesh, tol = 1e-5): TriMesh {
     remap[i] = idx;
   }
   const indices = new Uint32Array(m.indices.length);
+  const colors = m.colors ? new Uint8Array(m.colors.length) : null;
   let n = 0;
   for (let t = 0; t < m.indices.length; t += 3) {
     const a = remap[m.indices[t]];
     const b = remap[m.indices[t + 1]];
     const c = remap[m.indices[t + 2]];
     if (a === b || b === c || a === c) continue;
+    if (colors) colors[n / 3] = m.colors![t / 3];
     indices[n++] = a;
     indices[n++] = b;
     indices[n++] = c;
   }
-  return { positions: new Float32Array(out), indices: indices.slice(0, n) };
+  const result: TriMesh = { positions: new Float32Array(out), indices: indices.slice(0, n) };
+  if (colors) result.colors = colors.slice(0, n / 3);
+  return result;
 }
 
 export function bounds(m: TriMesh): Bounds {
@@ -94,16 +99,20 @@ export function mergeMeshes(meshes: TriMesh[]): TriMesh {
   }
   const positions = new Float32Array(nv);
   const indices = new Uint32Array(ni);
+  const colors = meshes.some((m) => m.colors) ? new Uint8Array(ni / 3) : null;
   let ov = 0;
   let oi = 0;
   for (const m of meshes) {
     positions.set(m.positions, ov);
     const base = ov / 3;
     for (let i = 0; i < m.indices.length; i++) indices[oi + i] = m.indices[i] + base;
+    if (colors && m.colors) colors.set(m.colors, oi / 3);
     ov += m.positions.length;
     oi += m.indices.length;
   }
-  return { positions, indices };
+  const result: TriMesh = { positions, indices };
+  if (colors) result.colors = colors;
+  return result;
 }
 
 export function validateMesh(m: TriMesh): TriMesh {
@@ -116,6 +125,12 @@ export function validateMesh(m: TriMesh): TriMesh {
   const nv = m.positions.length / 3;
   for (let i = 0; i < m.indices.length; i++) {
     if (m.indices[i] >= nv) throw new Error(`Triangle index ${m.indices[i]} exceeds vertex count ${nv}`);
+  }
+  if (m.colors) {
+    if (m.colors.length !== m.indices.length / 3) throw new Error('Colors array must have one entry per triangle');
+    for (let i = 0; i < m.colors.length; i++) {
+      if (m.colors[i] > MAX_SLOTS) throw new Error(`Color slot ${m.colors[i]} at triangle ${i} exceeds ${MAX_SLOTS}`);
+    }
   }
   return m;
 }
@@ -133,5 +148,5 @@ export function placeOnBed(m: TriMesh): TriMesh {
     positions[i + 1] = m.positions[i + 1] - dy;
     positions[i + 2] = m.positions[i + 2] - dz;
   }
-  return { positions, indices: m.indices };
+  return { ...m, positions };
 }
