@@ -70,9 +70,9 @@ function slotOfId(id: number): number {
   return id >= base && id < base + count ? id - base : 0;
 }
 
-export function toManifold(m: TriMesh): Manifold {
+/** Builds a Manifold from an already welded mesh, tagging color runs with reserved IDs. */
+function manifoldFromWelded(w: TriMesh): Manifold {
   const { Mesh, Manifold } = manifold();
-  const w = weld(m);
   const painted = w.colors && w.colors.some((c) => c !== 0);
   if (!painted) {
     const mesh = new Mesh({ numProp: 3, vertProperties: w.positions, triVerts: w.indices });
@@ -81,20 +81,22 @@ export function toManifold(m: TriMesh): Manifold {
   }
   const colors = w.colors!;
   const numTri = colors.length;
-  const order = Array.from({ length: numTri }, (_, i) => i).sort((a, b) => colors[a] - colors[b] || a - b);
   const triVerts = new Uint32Array(numTri * 3);
   const runIndex: number[] = [];
   const runOriginalID: number[] = [];
   const { base } = slotIds();
-  let last = -1;
-  order.forEach((t, i) => {
-    triVerts.set(w.indices.subarray(t * 3, t * 3 + 3), i * 3);
-    if (colors[t] !== last) {
-      last = colors[t];
-      runIndex.push(i * 3);
-      runOriginalID.push(base + last);
+  let n = 0;
+  for (let slot = 0; slot <= MAX_SLOTS; slot++) {
+    const start = n;
+    for (let t = 0; t < numTri; t++) {
+      if (colors[t] !== slot) continue;
+      triVerts.set(w.indices.subarray(t * 3, t * 3 + 3), n * 3);
+      n++;
     }
-  });
+    if (n === start) continue;
+    runIndex.push(start * 3);
+    runOriginalID.push(base + slot);
+  }
   runIndex.push(numTri * 3);
   const mesh = new Mesh({
     numProp: 3,
@@ -105,6 +107,37 @@ export function toManifold(m: TriMesh): Manifold {
   });
   mesh.merge();
   return new Manifold(mesh);
+}
+
+export function toManifold(m: TriMesh): Manifold {
+  return manifoldFromWelded(weld(m));
+}
+
+type PendingPaint = { positions: Float32Array; indices: Uint32Array; colors: Uint8Array };
+const pendingPaint = new WeakMap<Manifold, PendingPaint>();
+const meshCache = new WeakMap<Manifold, TriMesh>();
+
+/**
+ * Returns a handle to the same geometry with `colors` attached but not yet
+ * baked into run IDs. Painting stays cheap until a geometry op needs the
+ * colors in the manifold, at which point bakePaint builds them in.
+ */
+export function withPendingPaint(m: Manifold, colors: Uint8Array): Manifold {
+  const base = fromManifold(m);
+  const handle = m.translate([0, 0, 0]);
+  pendingPaint.set(handle, { positions: base.positions, indices: base.indices, colors });
+  return handle;
+}
+
+export function hasPendingPaint(m: Manifold): boolean {
+  return pendingPaint.has(m);
+}
+
+/** Bakes pending colors into a new Manifold the caller owns; returns `m` itself when nothing is pending. */
+export function bakePaint(m: Manifold): Manifold {
+  const p = pendingPaint.get(m);
+  if (!p) return m;
+  return manifoldFromWelded({ positions: p.positions, indices: p.indices, colors: p.colors });
 }
 
 /** Rebuilds the manifold with every triangle tagged as `slot`; slot 0 leaves it untagged. */
@@ -122,7 +155,22 @@ export function withSlot(m: Manifold, slot: number): Manifold {
   return new Manifold(tagged);
 }
 
+/** Reads the mesh once per Manifold; results are shared, so callers must not mutate the arrays. */
 export function fromManifold(m: Manifold): TriMesh {
+  const p = pendingPaint.get(m);
+  if (p) {
+    const out: TriMesh = { positions: p.positions, indices: p.indices };
+    if (p.colors.some((c) => c !== 0)) out.colors = p.colors;
+    return out;
+  }
+  const cached = meshCache.get(m);
+  if (cached) return cached;
+  const out = readManifold(m);
+  meshCache.set(m, out);
+  return out;
+}
+
+function readManifold(m: Manifold): TriMesh {
   const mesh = m.getMesh();
   const positions = new Float32Array(mesh.vertProperties.length / mesh.numProp * 3);
   for (let i = 0; i < positions.length / 3; i++) {

@@ -3,27 +3,45 @@ import type { TriMesh, Vec3 } from './types';
 const NEAREST_DISTANCE = 0.5;
 const NEAREST_COS = Math.cos((30 * Math.PI) / 180);
 
-function edgeKey(u: number, v: number): number {
-  return u * 4294967296 + v;
-}
+const adjacencyCache = new WeakMap<Uint32Array, Int32Array>();
 
 /** 3 entries per triangle: neighbor triangle index across edge (v0,v1), (v1,v2), (v2,v0); -1 when none. */
 export function buildAdjacency(m: TriMesh): Int32Array {
   const idx = m.indices;
-  const owner = new Map<number, number>();
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
-    const tri = t / 3;
-    owner.set(edgeKey(a, b), tri);
-    owner.set(edgeKey(b, c), tri);
-    owner.set(edgeKey(c, a), tri);
-  }
+  const numTri = idx.length / 3;
+  let numVert = 0;
+  for (let i = 0; i < idx.length; i++) if (idx[i] >= numVert) numVert = idx[i] + 1;
+  const offsets = new Uint32Array(numVert + 1);
+  for (let i = 0; i < idx.length; i++) offsets[idx[i] + 1]++;
+  for (let v = 0; v < numVert; v++) offsets[v + 1] += offsets[v];
+  const incident = new Uint32Array(idx.length);
+  const cursor = offsets.slice(0, numVert);
+  for (let i = 0; i < idx.length; i++) incident[cursor[idx[i]]++] = (i / 3) | 0;
   const adj = new Int32Array(idx.length).fill(-1);
-  for (let t = 0; t < idx.length; t += 3) {
-    const a = idx[t], b = idx[t + 1], c = idx[t + 2];
-    adj[t] = owner.get(edgeKey(b, a)) ?? -1;
-    adj[t + 1] = owner.get(edgeKey(c, b)) ?? -1;
-    adj[t + 2] = owner.get(edgeKey(a, c)) ?? -1;
+  for (let t = 0; t < numTri; t++) {
+    for (let k = 0; k < 3; k++) {
+      const a = idx[t * 3 + k];
+      const b = idx[t * 3 + ((k + 1) % 3)];
+      for (let j = offsets[b]; j < offsets[b + 1]; j++) {
+        const n = incident[j];
+        if (n === t) continue;
+        const n0 = idx[n * 3], n1 = idx[n * 3 + 1], n2 = idx[n * 3 + 2];
+        if ((n0 === b && n1 === a) || (n1 === b && n2 === a) || (n2 === b && n0 === a)) {
+          adj[t * 3 + k] = n;
+          break;
+        }
+      }
+    }
+  }
+  return adj;
+}
+
+/** Adjacency shared by every caller working on the same index array. */
+export function adjacencyOf(m: TriMesh): Int32Array {
+  let adj = adjacencyCache.get(m.indices);
+  if (!adj) {
+    adj = buildAdjacency(m);
+    adjacencyCache.set(m.indices, adj);
   }
   return adj;
 }

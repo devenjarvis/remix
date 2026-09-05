@@ -7,7 +7,9 @@ import '../../src/core/ops';
 import { paintOpFromHit, thinStroke } from '../../src/core/ops/paint';
 import { describeOp, type OpContext, type PaintOp } from '../../src/core/ops/types';
 import { validateOp } from '../../src/core/ops/validate';
-import { fromManifold, toManifold, weld } from '../../src/core/trimesh';
+import { fromManifold, hasPendingPaint, toManifold, weld } from '../../src/core/trimesh';
+import { Engine } from '../../src/core/engine';
+import { History } from '../../src/core/history';
 import { triangleCentroid, triangleNormals } from '../../src/core/select';
 import type { TriMesh } from '../../src/core/types';
 import { IDENTITY, fromAxes } from '../../src/core/mat4';
@@ -166,5 +168,55 @@ describe('paint op', () => {
     const thinned = thinStroke(points, normals, 1);
     expect(thinned.points).toEqual([[0, 0, 0], [1.2, 0, 0]]);
     expect(thinned.normals.length).toBe(2);
+  });
+});
+
+describe('deferred paint', () => {
+  it('a paint op shares geometry arrays with its input and bakes only when a geometry op follows', async () => {
+    const c = cube();
+    const before = fromManifold(c);
+    const out = await applyOp([c], fill(1, [5, 5, 10], [0, 0, 1]), ctx);
+    expect(hasPendingPaint(out[0])).toBe(true);
+    const m = fromManifold(out[0]);
+    expect(m.positions).toBe(before.positions);
+    expect(m.indices).toBe(before.indices);
+    expect(only(slotsWhere(m, (n) => n[2] > 0.9), 1)).toBe(true);
+    const again = await applyOp(out, { id: 'q', type: 'paint', color: 2, select: { kind: 'height', min: 0, max: 5 } }, ctx);
+    const m2 = fromManifold(again[0]);
+    expect(m2.positions).toBe(before.positions);
+    expect(only(slotsWhere(m2, (n) => n[2] > 0.9), 1)).toBe(true);
+    expect(only(slotsWhere(m2, (n, c) => c[2] < 5 && n[2] > -0.9), 2)).toBe(true);
+    expect(fromManifold(out[0]).colors!.every((s) => s !== 2)).toBe(true);
+    const scaled = await applyOp(again, { id: 's', type: 'scale', factors: [2, 2, 2] }, ctx);
+    expect(hasPendingPaint(scaled[0])).toBe(false);
+    const m3 = fromManifold(scaled[0]);
+    expect(m3.positions).not.toBe(before.positions);
+    expect(only(slotsWhere(m3, (n) => n[2] > 0.9), 1)).toBe(true);
+    expect(only(slotsWhere(m3, (n, c) => c[2] < 10 && n[2] > -0.9), 2)).toBe(true);
+  });
+
+  it('painting nothing new returns the input by reference', async () => {
+    const c = cube();
+    const out = await applyOp([c], { id: 'p', type: 'paint', color: 0, select: { kind: 'height', min: 50, max: 60 } }, ctx);
+    expect(out[0]).toBe(c);
+  });
+
+  it('engine undo after two paints shows the first paint only', async () => {
+    const engine = new Engine();
+    engine.setSource(weld(unweldedCube(10)));
+    const h = new History();
+    h.push(fill(1, [5, 5, 10], [0, 0, 1]));
+    h.push({ id: 'q', type: 'paint', color: 2, select: { kind: 'all' } });
+    let r = await engine.evaluate(h);
+    expect(r.parts[0].colors!.every((s) => s === 2)).toBe(true);
+    h.undo();
+    r = await engine.evaluate(h);
+    expect(only(slotsWhere(r.parts[0], (n) => n[2] > 0.9), 1)).toBe(true);
+    expect(only(slotsWhere(r.parts[0], (n) => n[2] < 0.9), 0)).toBe(true);
+    h.push({ id: 'c', type: 'cut', axis: 'z', offset: 5, keep: 'both' });
+    r = await engine.evaluate(h);
+    expect(r.error).toBeUndefined();
+    expect(r.parts.length).toBe(2);
+    expect(only(slotsWhere(r.parts[1], (n) => n[2] > 0.9), 1)).toBe(true);
   });
 });

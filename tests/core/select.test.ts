@@ -3,6 +3,7 @@ import { getManifold, manifold } from '../../src/core/manifold';
 import { fromManifold, weld } from '../../src/core/trimesh';
 import type { TriMesh, Vec3 } from '../../src/core/types';
 import {
+  adjacencyOf,
   buildAdjacency,
   nearestTriangle,
   selectBrush,
@@ -149,5 +150,15 @@ describe('select', () => {
     expect(triCount(m)).toBeGreaterThan(100000);
     expect(adj.length).toBe(m.indices.length);
     expect(ms).toBeLessThan(3000);
+  });
+});
+
+describe('adjacencyOf', () => {
+  it('returns the same table for the same index array and a new one for a copy', () => {
+    const cube = weld(unweldedCube(10));
+    const a = adjacencyOf(cube);
+    expect(adjacencyOf({ ...cube, colors: new Uint8Array(12) })).toBe(a);
+    expect(adjacencyOf({ ...cube, indices: cube.indices.slice() })).not.toBe(a);
+    expect(Array.from(a)).toEqual(Array.from(buildAdjacency(cube)));
   });
 });

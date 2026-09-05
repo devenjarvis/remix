@@ -1,7 +1,7 @@
 import type { Manifold } from 'manifold-3d';
 import type { TriMesh, Vec3 } from '../types';
-import { fromManifold, toManifold } from '../trimesh';
-import { buildAdjacency, nearestTriangle, selectBrush, selectFill, selectHeight, triangleNormals } from '../select';
+import { fromManifold, withPendingPaint } from '../trimesh';
+import { adjacencyOf, nearestTriangle, selectBrush, selectFill, selectHeight, triangleNormals } from '../select';
 import { registerOp } from './registry';
 import type { PaintOp, Selection } from './types';
 
@@ -10,13 +10,13 @@ function selectTriangles(mesh: TriMesh, sel: Selection): Uint32Array | 'all' {
     case 'fill': {
       const seed = nearestTriangle(mesh, sel.point, sel.normal);
       if (seed < 0) throw new Error('Paint target surface not found');
-      return selectFill(mesh, buildAdjacency(mesh), seed, sel.angle);
+      return selectFill(mesh, adjacencyOf(mesh), seed, sel.angle);
     }
     case 'brush': {
       const normals = triangleNormals(mesh);
       const seeds = sel.points.map((p, i) => nearestTriangle(mesh, p, sel.normals[i], normals));
       if (seeds.every((s) => s < 0)) throw new Error('Paint target surface not found');
-      return selectBrush(mesh, buildAdjacency(mesh), seeds, sel.points, sel.radius);
+      return selectBrush(mesh, adjacencyOf(mesh), seeds, sel.points, sel.radius);
     }
     case 'height':
       return selectHeight(mesh, sel.min, sel.max);
@@ -30,10 +30,10 @@ function paintPart(part: Manifold, sel: Selection, color: number): Manifold {
   const mesh = fromManifold(part);
   const picked = selectTriangles(mesh, sel);
   if (picked !== 'all' && picked.length === 0) return part;
-  const colors = mesh.colors ?? new Uint8Array(mesh.indices.length / 3);
+  const colors = mesh.colors ? mesh.colors.slice() : new Uint8Array(mesh.indices.length / 3);
   if (picked === 'all') colors.fill(color);
   else for (const t of picked) colors[t] = color;
-  return toManifold({ ...mesh, colors });
+  return withPendingPaint(part, colors);
 }
 
 function targetIndex(sel: Selection, count: number): number | null {

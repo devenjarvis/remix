@@ -22,7 +22,7 @@ export interface ViewportLike {
   setPalette(hexes: string[]): void;
   /** Overrides one part's slots without rebuilding geometry; null restores the part's own slots. */
   setTriangleColors(part: number, colors: Uint8Array | null): void;
-  /** Blends the given triangles toward white; null clears the highlight. */
+  /** Tints the given triangles toward the accent color; null clears the highlight. */
   highlightTriangles(part: number, tris: Uint32Array | null): void;
   /** Fires with the face under the pointer, or null when it leaves the model. Only while pick mode is on. */
   onHover(cb: (hit: FaceHit | null) => void): () => void;

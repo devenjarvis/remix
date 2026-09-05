@@ -14,12 +14,15 @@ THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const BG = 0x1b1d22;
 const PALETTE = [0xb8c4d6, 0xe6a86b, 0x8fcf8a, 0xd98ad6, 0x7fc8d8, 0xe0d072];
 const AXIS_INDEX: Record<Axis, 0 | 1 | 2> = { x: 0, y: 1, z: 2 };
-const HIGHLIGHT = 0.55;
+const HIGHLIGHT = 0.5;
+const HIGHLIGHT_TINT = new THREE.Color(0x5aa9ff);
 
 type DragPhase = 'start' | 'move' | 'end';
 
 type Part = {
   mesh: THREE.Mesh;
+  positions: Float32Array;
+  indices: Uint32Array;
   slots: Uint8Array | null;
   override: Uint8Array | null;
   highlight: Uint32Array | null;
@@ -114,37 +117,53 @@ export class Viewport implements ViewportLike {
   }
 
   setParts(parts: TriMesh[], fit = false): void {
-    for (const p of this.parts) {
+    const previous = this.parts;
+    const reused = new Set<Part>();
+    this.parts = parts.map((p, i) => {
+      const prev = previous[i];
+      if (prev && prev.positions === p.positions && prev.indices === p.indices) {
+        reused.add(prev);
+        prev.slots = p.colors ?? null;
+        prev.override = null;
+        prev.highlight = null;
+        this.fill(prev, i);
+        return prev;
+      }
+      return this.buildPart(p, i);
+    });
+    for (const p of previous) {
+      if (reused.has(p)) continue;
       this.partGroup.remove(p.mesh);
       p.mesh.geometry.disposeBoundsTree?.();
       p.mesh.geometry.dispose();
       (p.mesh.material as THREE.Material).dispose();
     }
-    this.parts = parts.map((p, i) => {
-      const n = p.indices.length;
-      const positions = new Float32Array(n * 3);
-      for (let k = 0; k < n; k++) {
-        const v = p.indices[k] * 3;
-        positions[k * 3] = p.positions[v];
-        positions[k * 3 + 1] = p.positions[v + 1];
-        positions[k * 3 + 2] = p.positions[v + 2];
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      const color = new THREE.BufferAttribute(new Float32Array(n * 3), 3);
-      geo.setAttribute('color', color);
-      geo.computeVertexNormals();
-      geo.computeBoundsTree({ indirect: true });
-      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0.05 });
-      const mesh = new THREE.Mesh(geo, mat);
-      this.partGroup.add(mesh);
-      const part: Part = { mesh, slots: p.colors ?? null, override: null, highlight: null, color };
-      this.fill(part, i);
-      return part;
-    });
     if (parts.length === 0) this.fitted = false;
     else if (fit || !this.fitted) this.fitCamera();
     this.requestRender();
+  }
+
+  private buildPart(p: TriMesh, index: number): Part {
+    const n = p.indices.length;
+    const positions = new Float32Array(n * 3);
+    for (let k = 0; k < n; k++) {
+      const v = p.indices[k] * 3;
+      positions[k * 3] = p.positions[v];
+      positions[k * 3 + 1] = p.positions[v + 1];
+      positions[k * 3 + 2] = p.positions[v + 2];
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const color = new THREE.BufferAttribute(new Float32Array(n * 3), 3);
+    geo.setAttribute('color', color);
+    geo.computeVertexNormals();
+    geo.computeBoundsTree({ indirect: true });
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0.05 });
+    const mesh = new THREE.Mesh(geo, mat);
+    this.partGroup.add(mesh);
+    const part: Part = { mesh, positions: p.positions, indices: p.indices, slots: p.colors ?? null, override: null, highlight: null, color };
+    this.fill(part, index);
+    return part;
   }
 
   private fill(part: Part, index: number): void {
@@ -164,7 +183,11 @@ export class Viewport implements ViewportLike {
     if (part.highlight) {
       for (const t of part.highlight) {
         if (t >= n) continue;
-        for (let k = 0; k < 9; k++) arr[t * 9 + k] += (1 - arr[t * 9 + k]) * HIGHLIGHT;
+        for (let k = 0; k < 9; k += 3) {
+          arr[t * 9 + k] += (HIGHLIGHT_TINT.r - arr[t * 9 + k]) * HIGHLIGHT;
+          arr[t * 9 + k + 1] += (HIGHLIGHT_TINT.g - arr[t * 9 + k + 1]) * HIGHLIGHT;
+          arr[t * 9 + k + 2] += (HIGHLIGHT_TINT.b - arr[t * 9 + k + 2]) * HIGHLIGHT;
+        }
       }
     }
     part.color.needsUpdate = true;
