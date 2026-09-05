@@ -1,6 +1,7 @@
 import type { Op, Recipe } from './ops/types';
 import type { PaletteSlot } from './color';
 import { validateOp, validateRecipe } from './ops/validate';
+import { consolidatePaints } from './ops/paint';
 
 type Listener = () => void;
 
@@ -72,8 +73,21 @@ export class History {
   }
 
   /** Version 2 carries the palette; without one the recipe stays version 1. */
+  get canMergePaints(): boolean {
+    return consolidatePaints(this.active).length < this.cursor;
+  }
+
+  /** Merges consecutive same-color paint steps in the active history; the redo tail is kept. */
+  mergePaints(): void {
+    const merged = consolidatePaints(this.active);
+    if (merged.length === this.cursor) return;
+    this.ops = merged.concat(this.ops.slice(this.cursor));
+    this.cursor = merged.length;
+    this.emit();
+  }
+
   toJSON(palette?: PaletteSlot[]): Recipe {
-    const ops = this.active.map((o) => ({ ...o }));
+    const ops = consolidatePaints(this.active).map((o) => ({ ...o }));
     return palette ? { version: 2, palette: palette.map((s) => ({ ...s })), ops } : { version: 1, ops };
   }
 

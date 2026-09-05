@@ -4,8 +4,8 @@ import { getManifold, manifold } from '../../src/core/manifold';
 import { parseFont } from '../../src/core/font';
 import { applyOp } from '../../src/core/ops/registry';
 import '../../src/core/ops';
-import { paintOpFromHit, thinStroke } from '../../src/core/ops/paint';
-import { describeOp, type OpContext, type PaintOp } from '../../src/core/ops/types';
+import { consolidatePaints, paintOpFromHit, thinStroke } from '../../src/core/ops/paint';
+import { describeOp, type Op, type OpContext, type PaintOp } from '../../src/core/ops/types';
 import { validateOp } from '../../src/core/ops/validate';
 import { fromManifold, hasPendingPaint, toManifold, weld } from '../../src/core/trimesh';
 import { Engine } from '../../src/core/engine';
@@ -218,5 +218,72 @@ describe('deferred paint', () => {
     expect(r.error).toBeUndefined();
     expect(r.parts.length).toBe(2);
     expect(only(slotsWhere(r.parts[1], (n) => n[2] > 0.9), 1)).toBe(true);
+  });
+});
+
+describe('fill rule, refine, and multi selections', () => {
+  it('fill with the crease rule paints a cylinder wall in one op and validates the rule', async () => {
+    const shape = manifold().Manifold.cube([10, 10, 10]).add(manifold().Manifold.cylinder(20, 3, 3, 64).translate([5, 5, 5]));
+    const op: PaintOp = { id: 'f', type: 'paint', color: 2, select: { kind: 'fill', part: 0, point: [8, 5, 15], normal: [1, 0, 0], angle: 30, rule: 'crease' } };
+    const m = fromManifold((await applyOp([shape], op, ctx))[0]);
+    expect(only(slotsWhere(m, (n, c) => Math.abs(n[2]) < 0.01 && c[2] > 10.01), 2)).toBe(true);
+    expect(only(slotsWhere(m, (n, c) => c[2] < 9.9), 0)).toBe(true);
+    expect(validateOp(op)).toEqual(op);
+    expect(() => validateOp({ ...op, select: { ...op.select, rule: 'magic' } })).toThrow(/rule/i);
+    expect('rule' in (validateOp(fill(1, [5, 5, 10], [0, 0, 1])) as PaintOp).select).toBe(false);
+  });
+
+  it('refine splits long edges, keeps colors, and validates its length', async () => {
+    const painted = await applyOp([cube()], fill(1, [5, 5, 10], [0, 0, 1]), ctx);
+    const out = await applyOp(painted, { id: 'r', type: 'refine', length: 2 }, ctx);
+    const m = fromManifold(out[0]);
+    expect(m.indices.length / 3).toBeGreaterThan(100);
+    expect(out[0].volume()).toBeCloseTo(1000, 3);
+    expect(only(slotsWhere(m, (n) => n[2] > 0.9), 1)).toBe(true);
+    expect(only(slotsWhere(m, (n) => n[2] < 0.9), 0)).toBe(true);
+    expect(() => validateOp({ id: 'r', type: 'refine', length: 0 })).toThrow(/length/i);
+    expect(describeOp({ id: 'r', type: 'refine', length: 2.5 })).toBe('Refine to 2.5 mm');
+  });
+
+  it('a multi selection paints each selection in order across parts', async () => {
+    const two = cube().add(manifold().Manifold.cube([10, 10, 10]).translate([20, 0, 0]));
+    const shells = await applyOp([two], { id: 's', type: 'split', keep: 'all' }, ctx);
+    const op: PaintOp = {
+      id: 'm',
+      type: 'paint',
+      color: 3,
+      select: {
+        kind: 'multi',
+        selections: [
+          { kind: 'fill', part: 0, point: [5, 5, 10], normal: [0, 0, 1], angle: 30 },
+          { kind: 'fill', part: 1, point: [25, 5, 10], normal: [0, 0, 1], angle: 30 },
+          { kind: 'height', min: 0, max: 3 },
+        ],
+      },
+    };
+    const out = await applyOp(shells, op, ctx);
+    for (const p of out.map(fromManifold)) {
+      expect(only(slotsWhere(p, (n) => n[2] > 0.9), 3)).toBe(true);
+      expect(only(slotsWhere(p, (n, c) => c[2] < 3), 3)).toBe(true);
+      expect(only(slotsWhere(p, (n, c) => Math.abs(n[0]) > 0.9 && c[2] > 3), 0)).toBe(true);
+    }
+    expect(describeOp(op)).toBe('Paint slot 3 (2 fills, 1 height)');
+    expect(() => validateOp({ ...op, select: { kind: 'multi', selections: [] } })).toThrow(/selections/i);
+    expect(() => validateOp({ ...op, select: { kind: 'multi', selections: [op.select] } })).toThrow(/nest/i);
+  });
+
+  it('consolidatePaints merges consecutive same-color paints and leaves others alone', () => {
+    const a = fill(1, [5, 5, 10], [0, 0, 1]);
+    const b: PaintOp = { ...fill(1, [5, 0, 5], [0, -1, 0]), id: 'b' };
+    const c: PaintOp = { id: 'c', type: 'paint', color: 2, select: { kind: 'all' } };
+    const d: PaintOp = { id: 'd', type: 'paint', color: 2, select: { kind: 'multi', selections: [{ kind: 'height', min: 0, max: 1 }] } };
+    const scale: Op = { id: 's', type: 'scale', factors: [2, 2, 2] };
+    const out = consolidatePaints([a, b, scale, c, d, a]);
+    expect(out.length).toBe(4);
+    expect(out[0]).toEqual({ id: 'p', type: 'paint', color: 1, select: { kind: 'multi', selections: [a.select, b.select] } });
+    expect(out[1]).toBe(scale);
+    expect(out[2]).toEqual({ id: 'c', type: 'paint', color: 2, select: { kind: 'multi', selections: [c.select, { kind: 'height', min: 0, max: 1 }] } });
+    expect(out[3]).toBe(a);
+    for (const op of out) validateOp(op);
   });
 });

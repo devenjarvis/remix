@@ -12,6 +12,7 @@ export type RotateOp = OpBase & { type: 'rotate'; axis: Axis; degrees: number };
 export type LayFlatOp = OpBase & { type: 'layflat'; normal: Vec3 };
 export type CutOp = OpBase & { type: 'cut'; axis: Axis; offset: number; keep: 'both' | 'below' | 'above' };
 export type SplitOp = OpBase & { type: 'split'; keep: number[] | 'all' };
+export type RefineOp = OpBase & { type: 'refine'; length: number };
 
 export type ToolBody =
   | { kind: 'box' | 'cylinder' | 'sphere'; size: Vec3 }
@@ -39,16 +40,18 @@ export type TextOp = OpBase & {
   color?: number;
 };
 
+/** A single region; `multi` holds a list applied in order and may not nest. */
 export type Selection =
-  | { kind: 'fill'; part: number; point: Vec3; normal: Vec3; angle: number }
+  | { kind: 'fill'; part: number; point: Vec3; normal: Vec3; angle: number; rule?: 'seed' | 'crease' }
   | { kind: 'brush'; part: number; points: Vec3[]; normals: Vec3[]; radius: number }
   | { kind: 'height'; min: number; max: number }
   | { kind: 'part'; index: number }
-  | { kind: 'all' };
+  | { kind: 'all' }
+  | { kind: 'multi'; selections: Selection[] };
 
 export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection };
 
-export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | BooleanOp | TextOp | PaintOp;
+export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | RefineOp | BooleanOp | TextOp | PaintOp;
 
 export type OpContext = { manifold: ManifoldToplevel; font?: unknown };
 
@@ -59,6 +62,14 @@ export function newId(): string {
 }
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
+
+/** "fill", or for a multi selection a count per kind such as "2 fills, 1 height". */
+export function describeSelection(sel: Selection): string {
+  if (sel.kind !== 'multi') return sel.kind;
+  const counts = new Map<string, number>();
+  for (const s of sel.selections) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1);
+  return [...counts].map(([kind, n]) => `${n} ${kind}${n > 1 && kind !== 'all' ? 's' : ''}`).join(', ');
+}
 
 export function describeOp(op: Op): string {
   switch (op.type) {
@@ -83,8 +94,10 @@ export function describeOp(op: Op): string {
     }
     case 'text':
       return `${op.mode === 'emboss' ? 'Emboss' : 'Engrave'} "${op.text}"`;
+    case 'refine':
+      return `Refine to ${fmt(op.length)} mm`;
     case 'paint':
-      return `Paint ${op.color === 0 ? 'Base' : `slot ${op.color}`} (${op.select.kind})`;
+      return `Paint ${op.color === 0 ? 'Base' : `slot ${op.color}`} (${describeSelection(op.select)})`;
     default:
       return `Unknown op ${(op as OpBase).type}`;
   }

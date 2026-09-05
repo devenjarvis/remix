@@ -7,6 +7,7 @@ import { buildSplitForm } from './split';
 import { buildTextForm } from './text';
 import { buildBooleanForm } from './boolean';
 import { buildPaintForm, registerPaintForm } from './paint';
+import { buildRefineForm } from './refine';
 
 export { buildScaleForm, buildMirrorForm, buildRotateForm, buildCutForm, buildSplitForm, buildPaintForm, registerPaintForm };
 
@@ -23,6 +24,10 @@ export function registerCutSplitForms(panel: Panel): void {
 
 export function registerTextForm(panel: Panel): void {
   panel.register('text', 'Text', buildTextForm, { needsManifold: true });
+}
+
+export function registerRefineForm(panel: Panel): void {
+  panel.register('refine', 'Refine', buildRefineForm, { needsManifold: true });
 }
 
 export function registerBooleanForm(panel: Panel): void {

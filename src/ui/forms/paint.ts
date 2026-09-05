@@ -4,7 +4,7 @@ import type { Panel } from '../panel';
 import { newId, type PaintOp, type Selection } from '../../core/ops/types';
 import { paintOpFromHit, thinStroke } from '../../core/ops/paint';
 import { MAX_SLOTS, type PaletteSlot } from '../../core/color';
-import { adjacencyOf, selectBrush, selectFill } from '../../core/select';
+import { adjacencyOf, selectBrush, selectFill, type FillRule } from '../../core/select';
 import type { Vec3 } from '../../core/types';
 import { bounds } from '../../core/trimesh';
 import { actions, el, fmt, hint, numberInput, row, select } from '../dom';
@@ -24,6 +24,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   const addBtn = el('button', { onClick: () => editPalette([...app.palette, { name: `Color ${app.palette.length}`, hex: SLOT_COLORS[(app.palette.length - 1) % SLOT_COLORS.length] }], app.palette.length) }, ['Add']);
   const removeBtn = el('button', { onClick: () => editPalette(app.palette.slice(0, -1), Math.min(active, app.palette.length - 2)) }, ['Remove']);
   const mode = select<Mode>([['fill', 'Fill'], ['brush', 'Brush'], ['height', 'Height'], ['part', 'Part'], ['all', 'All']], 'fill');
+  const rule = select<FillRule>([['crease', 'Stop at creases'], ['seed', 'Similar direction']], 'crease');
   const angle = el('input', { type: 'range', min: 0, max: 180, step: 1 });
   angle.value = '30';
   const angleValue = numberInput(30, { step: 1, min: 0 });
@@ -34,8 +35,9 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   const info = hint();
   const apply = el('button', { class: 'primary', onClick: () => applyPreview() }, ['Apply']);
 
+  const fillRows = el('div', { class: 'stack' }, [row('Rule', rule), row('Angle', angle, angleValue)]);
   const rows: Record<string, HTMLElement> = {
-    fill: row('Angle', angle, angleValue),
+    fill: fillRows,
     brush: row('Radius', radius),
     height: row('Z range', minZ, maxZ),
     part: partList,
@@ -161,7 +163,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     if (!mesh || mesh.indices !== pinned.indices) return unpin();
     if (hoverPart >= 0 && hoverPart !== hit.partIndex) viewport?.highlightTriangles(hoverPart, null);
     hoverPart = hit.partIndex;
-    viewport?.highlightTriangles(hoverPart, selectFill(mesh, adjacencyOf(mesh), hit.triangle, angle.valueAsNumber));
+    viewport?.highlightTriangles(hoverPart, selectFill(mesh, adjacencyOf(mesh), hit.triangle, angle.valueAsNumber, rule.value as FillRule));
     apply.disabled = !app.canEditGeometry;
   }
 
@@ -176,7 +178,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   function paintFill(hit: FaceHit): void {
     if (!app.canEditGeometry) return;
     unpin();
-    app.pushOp(paintOpFromHit(hit, active, angle.valueAsNumber, id));
+    app.pushOp(paintOpFromHit(hit, active, angle.valueAsNumber, id, rule.value as FillRule));
     id = newId();
   }
 
@@ -232,7 +234,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     viewport?.setPickMode(m === 'fill' || m === 'brush');
     unpin();
     info.textContent = {
-      fill: 'Hover to preview a region and click to paint it. The preview stays while you adjust the angle; [ and ] nudge it by 5°.',
+      fill: 'Hover to preview a region and click to paint it. Stop at creases follows smooth curves and stops at sharp edges; Similar direction keeps to faces near the hovered normal. The preview stays while you adjust the angle; [ and ] nudge it by 5°.',
       brush: 'Drag on the model to paint',
       height: 'Paints every triangle whose center lies in the Z range',
       part: 'Paints one whole part',
@@ -270,6 +272,7 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
   angle.addEventListener('input', () => setAngle(angle.valueAsNumber));
   angleValue.addEventListener('input', () => setAngle(angleValue.valueAsNumber));
   mode.addEventListener('change', updateMode);
+  rule.addEventListener('change', showFill);
   for (const input of [minZ, maxZ]) input.addEventListener('input', preview);
   partList.addEventListener('change', preview);
   window.addEventListener('keydown', onKey);

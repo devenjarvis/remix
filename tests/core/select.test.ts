@@ -162,3 +162,34 @@ describe('adjacencyOf', () => {
     expect(Array.from(a)).toEqual(Array.from(buildAdjacency(cube)));
   });
 });
+
+describe('selectFill crease rule', () => {
+  it('crosses smooth curvature and stops at creases', async () => {
+    await getManifold();
+    const { Manifold } = manifold();
+    const shape = Manifold.cube([10, 10, 10]).add(Manifold.cylinder(20, 3, 3, 64).translate([5, 5, 5]));
+    const m = fromManifold(shape);
+    const adj = buildAdjacency(m);
+    const normals = triangleNormals(m);
+    let seed = -1;
+    for (let t = 0; t < m.indices.length / 3 && seed < 0; t++) {
+      const c = triangleCentroid(m, t);
+      if (Math.abs(normals[t * 3 + 2]) < 0.01 && c[2] > 12 && Math.hypot(c[0] - 5, c[1] - 5) < 3.5) seed = t;
+    }
+    expect(seed).toBeGreaterThanOrEqual(0);
+    const wall = [...Array(m.indices.length / 3).keys()].filter((t) => {
+      const c = triangleCentroid(m, t);
+      return Math.abs(normals[t * 3 + 2]) < 0.01 && c[2] > 10.01 && Math.hypot(c[0] - 5, c[1] - 5) < 3.5;
+    });
+    const crease = selectFill(m, adj, seed, 30, 'crease');
+    expect(Array.from(crease)).toEqual(wall);
+    const seedRule = selectFill(m, adj, seed, 30, 'seed');
+    expect(seedRule.length).toBeLessThan(wall.length);
+  });
+
+  it('crease rule at 100° from a cube face floods the whole cube', () => {
+    const cube = weld(unweldedCube(10));
+    expect(selectFill(cube, buildAdjacency(cube), 0, 100, 'crease').length).toBe(12);
+    expect(selectFill(cube, buildAdjacency(cube), 0, 60, 'crease').length).toBe(2);
+  });
+});

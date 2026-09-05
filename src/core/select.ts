@@ -126,20 +126,22 @@ export function nearestTriangle(m: TriMesh, point: Vec3, normal: Vec3, normals =
   return best;
 }
 
-function flood(m: TriMesh, adj: Int32Array, seed: number, accept: (t: number) => boolean, visited: Uint8Array): void {
-  if (seed < 0 || seed * 3 >= m.indices.length || visited[seed] || !accept(seed)) return;
+function flood(m: TriMesh, adj: Int32Array, seed: number, accept: (t: number, from: number) => boolean, visited: Uint8Array): void {
+  if (seed < 0 || seed * 3 >= m.indices.length || visited[seed] || !accept(seed, seed)) return;
   const stack = [seed];
   visited[seed] = 1;
   while (stack.length) {
     const t = stack.pop()!;
     for (let k = 0; k < 3; k++) {
       const n = adj[t * 3 + k];
-      if (n < 0 || visited[n] || !accept(n)) continue;
+      if (n < 0 || visited[n] || !accept(n, t)) continue;
       visited[n] = 1;
       stack.push(n);
     }
   }
 }
+
+export type FillRule = 'seed' | 'crease';
 
 function collect(visited: Uint8Array): Uint32Array {
   let count = 0;
@@ -150,14 +152,19 @@ function collect(visited: Uint8Array): Uint32Array {
   return out;
 }
 
-/** BFS from seed crossing an edge only when the neighbor's normal is within angleDeg of the SEED's normal (not the previous triangle's). Returns sorted triangle indices. */
-export function selectFill(m: TriMesh, adj: Int32Array, seed: number, angleDeg: number): Uint32Array {
+/**
+ * Flood from seed. Rule 'seed' crosses an edge only when the neighbor's normal is within
+ * angleDeg of the seed's normal; rule 'crease' compares the neighbor with the triangle it
+ * was reached from, so the flood follows smooth curvature and stops at sharp edges.
+ * Returns sorted triangle indices.
+ */
+export function selectFill(m: TriMesh, adj: Int32Array, seed: number, angleDeg: number, rule: FillRule = 'seed'): Uint32Array {
   const visited = new Uint8Array(m.indices.length / 3);
   if (seed < 0 || seed >= visited.length) return new Uint32Array(0);
   const normals = triangleNormals(m);
-  const sx = normals[seed * 3], sy = normals[seed * 3 + 1], sz = normals[seed * 3 + 2];
   const minCos = Math.cos((angleDeg * Math.PI) / 180);
-  flood(m, adj, seed, (t) => normals[t * 3] * sx + normals[t * 3 + 1] * sy + normals[t * 3 + 2] * sz >= minCos, visited);
+  const dot = (a: number, b: number) => normals[a * 3] * normals[b * 3] + normals[a * 3 + 1] * normals[b * 3 + 1] + normals[a * 3 + 2] * normals[b * 3 + 2];
+  flood(m, adj, seed, (t, from) => dot(t, rule === 'crease' ? from : seed) >= minCos, visited);
   return collect(visited);
 }
 

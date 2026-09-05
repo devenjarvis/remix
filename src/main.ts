@@ -9,7 +9,7 @@ import { AppState } from './ui/app';
 import { baseName, download } from './ui/download';
 import { pickFile, readModelFile, wireFileOpen } from './ui/files';
 import { buildLayFlatForm } from './ui/forms/layflat';
-import { registerBooleanForm, registerCutSplitForms, registerPaintForm, registerTextForm, registerTransformForms } from './ui/forms';
+import { registerBooleanForm, registerCutSplitForms, registerPaintForm, registerRefineForm, registerTextForm, registerTransformForms } from './ui/forms';
 import { HistoryPanel } from './ui/history';
 import { Panel } from './ui/panel';
 import { StatusBar } from './ui/status';
@@ -27,7 +27,7 @@ async function boot(): Promise<void> {
   app.viewport = viewport;
 
   const status = new StatusBar(app, $('status-size'), $('status-tris'), $('status-manifold'), $('status-msg'));
-  new HistoryPanel(app, $('history-list'), $<HTMLButtonElement>('btn-undo'), $<HTMLButtonElement>('btn-redo'));
+  new HistoryPanel(app, $('history-list'), $<HTMLButtonElement>('btn-undo'), $<HTMLButtonElement>('btn-redo'), $<HTMLButtonElement>('btn-merge-paint'));
 
   const panel = new Panel(app, $('op-buttons'), $('op-form'));
   registerTransformForms(panel);
@@ -35,6 +35,7 @@ async function boot(): Promise<void> {
   registerCutSplitForms(panel);
   registerBooleanForm(panel);
   registerTextForm(panel);
+  registerRefineForm(panel);
   registerPaintForm(panel);
 
   const dropHint = $('drop-hint');

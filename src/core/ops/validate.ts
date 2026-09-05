@@ -41,13 +41,20 @@ function unitVec(v: unknown, what: string): [number, number, number] {
   return v;
 }
 
-function selection(v: unknown): Selection {
+function selection(v: unknown, nested = false): Selection {
   if (!v || typeof v !== 'object') fail('paint select must be an object');
   const s = v as Record<string, unknown>;
   switch (s.kind) {
-    case 'fill':
+    case 'fill': {
       if (!isVec3(s.point)) fail('fill point must be a vector');
-      return { kind: 'fill', part: index(s.part, 'part'), point: s.point, normal: unitVec(s.normal, 'fill normal'), angle: num(s.angle, 'angle', 0) };
+      const sel: Selection = { kind: 'fill', part: index(s.part, 'part'), point: s.point, normal: unitVec(s.normal, 'fill normal'), angle: num(s.angle, 'angle', 0) };
+      if (s.rule !== undefined) sel.rule = oneOf(s.rule, ['seed', 'crease'] as const, 'fill rule');
+      return sel;
+    }
+    case 'multi':
+      if (nested) fail('multi selections may not nest');
+      if (!Array.isArray(s.selections) || !s.selections.length) fail('multi selections must be a non-empty list');
+      return { kind: 'multi', selections: s.selections.map((x) => selection(x, true)) };
     case 'brush': {
       if (!Array.isArray(s.points) || !s.points.length || !s.points.every(isVec3)) fail('brush points must be a non-empty list of vectors');
       if (!Array.isArray(s.normals) || s.normals.length !== s.points.length) fail('brush normals must match points');
@@ -103,6 +110,8 @@ export function validateOp(v: unknown): Op {
       return { id, type: 'layflat', normal: o.normal };
     case 'cut':
       return { id, type: 'cut', axis: axis(o.axis), offset: num(o.offset, 'offset'), keep: oneOf(o.keep, ['both', 'below', 'above'] as const, 'keep') };
+    case 'refine':
+      return { id, type: 'refine', length: num(o.length, 'length', 0.01) };
     case 'split':
       if (o.keep !== 'all' && !(Array.isArray(o.keep) && o.keep.every((i) => Number.isInteger(i) && i >= 0))) fail('split keep must be "all" or non-negative integers');
       return { id, type: 'split', keep: o.keep as number[] | 'all' };

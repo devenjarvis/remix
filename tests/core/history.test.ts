@@ -148,3 +148,23 @@ describe('recipe palette', () => {
     expect(() => validateRecipe({ version: 3, ops: [] })).toThrow(/version/i);
   });
 });
+
+describe('merge paint steps', () => {
+  const paint = (id: string, color: number): Op => ({ id, type: 'paint', color, select: { kind: 'all' } });
+
+  it('toJSON consolidates consecutive paints and mergePaints does so in place', () => {
+    const h = new History();
+    h.push(paint('a', 1));
+    h.push(paint('b', 1));
+    h.push(scale(2));
+    h.push(paint('c', 2));
+    h.push(paint('d', 2));
+    h.undo();
+    expect(h.toJSON().ops.map((o) => o.id)).toEqual(['a', 's', 'c'].map((id) => (id === 's' ? h.ops[2].id : id)));
+    expect(h.canMergePaints).toBe(true);
+    h.mergePaints();
+    expect(h.ops.map((o) => o.id)).toEqual(['a', h.ops[1].id, 'c', 'd']);
+    expect(h.cursor).toBe(3);
+    expect(h.canMergePaints).toBe(false);
+  });
+});

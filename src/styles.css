@@ -87,6 +87,10 @@ main {
 
 #panel section { padding: 10px; border-bottom: 1px solid var(--border); }
 #panel h2 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; letter-spacing: 0.05em; }
+#panel .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+#panel .section-head h2 { margin: 0; }
+#panel .section-head button { font-size: 11px; padding: 2px 6px; }
+#op-form .stack { display: flex; flex-direction: column; gap: 6px; }
 
 #op-buttons { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 
