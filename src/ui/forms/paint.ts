@@ -83,7 +83,10 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     name.value = slot?.name ?? '';
     hex.value = slot?.hex ?? '#000000';
     addBtn.disabled = app.palette.length >= MAX_SLOTS + 1;
-    removeBtn.disabled = app.palette.length <= 1;
+    const last = app.palette.length - 1;
+    const lastInUse = app.parts.some((p) => p.colors?.some((c) => c === last));
+    removeBtn.disabled = last < 1 || lastInUse;
+    removeBtn.title = lastInUse ? `Slot ${last} is painted on the model` : '';
   }
 
   function setActive(i: number): void {

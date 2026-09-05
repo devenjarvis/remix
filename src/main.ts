@@ -79,10 +79,14 @@ async function boot(): Promise<void> {
       if (!parts.length) return status.setMessage('Nothing to export', 'warn');
       const format = b.dataset.format as ExportFormat;
       const name = `${baseName(app.sourceName)}-remix`;
-      const { bytes, droppedColors } = exportModel(parts, format, name, app.palette);
-      download(bytes, `${name}.${format}`);
-      if (droppedColors) status.setMessage(`Exported ${name}.${format} (colors dropped; use 3MF to keep them)`, 'warn');
-      else status.setMessage(`Exported ${name}.${format}`, 'ok');
+      try {
+        const { bytes, droppedColors } = exportModel(parts, format, name, app.palette);
+        download(bytes, `${name}.${format}`);
+        if (droppedColors) status.setMessage(`Exported ${name}.${format} (colors dropped; use 3MF to keep them)`, 'warn');
+        else status.setMessage(`Exported ${name}.${format}`, 'ok');
+      } catch (e) {
+        status.setMessage(`Could not export: ${e instanceof Error ? e.message : String(e)}`, 'err');
+      }
     });
   });
 
