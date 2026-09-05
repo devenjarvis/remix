@@ -23,3 +23,11 @@ describe('recipe validation', () => {
     expect(() => validateRecipe({ version: 1, ops: [{ type: 'mirror', axis: 'x' }] })).toThrow(/id/);
   });
 });
+
+describe('History.push validation', () => {
+  it('rejects NaN from a blank form field', () => {
+    const h = new History();
+    expect(() => h.push({ id: 'a', type: 'rotate', axis: 'z', degrees: NaN })).toThrow(/degrees/);
+    expect(h.ops.length).toBe(0);
+  });
+});

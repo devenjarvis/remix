@@ -87,7 +87,9 @@ describe('history + engine', () => {
     const engine = new Engine();
     engine.setSource(unweldedCube(10));
     const h = new History();
-    h.push({ id: newId(), type: 'bogus' } as unknown as Op);
+    expect(() => h.push({ id: newId(), type: 'bogus' } as unknown as Op)).toThrow(/unknown op type/);
+    h.ops.push({ id: newId(), type: 'bogus' } as unknown as Op);
+    h.cursor = 1;
     const r = await engine.evaluate(h);
     expect(r.error).toMatch(/bogus/);
   });

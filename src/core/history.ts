@@ -1,5 +1,5 @@
 import type { Op, Recipe } from './ops/types';
-import { validateRecipe } from './ops/validate';
+import { validateOp, validateRecipe } from './ops/validate';
 
 type Listener = () => void;
 
@@ -23,14 +23,14 @@ export class History {
 
   push(op: Op): void {
     this.ops = this.ops.slice(0, this.cursor);
-    this.ops.push(op);
+    this.ops.push(validateOp(op));
     this.cursor = this.ops.length;
     this.emit();
   }
 
   pushAll(ops: Op[]): void {
     if (!ops.length) return;
-    this.ops = this.ops.slice(0, this.cursor).concat(ops);
+    this.ops = this.ops.slice(0, this.cursor).concat(ops.map(validateOp));
     this.cursor = this.ops.length;
     this.emit();
   }
