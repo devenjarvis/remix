@@ -1,6 +1,7 @@
 import './styles.css';
 import { Engine } from './core/engine';
 import { History } from './core/history';
+import { validateRecipe } from './core/ops/validate';
 import { getFont } from './core/font';
 import { getManifold } from './core/manifold';
 import { exportModel, type ExportFormat } from './io/save';
@@ -40,13 +41,16 @@ async function boot(): Promise<void> {
   async function openFile(file: File): Promise<void> {
     status.setMessage(`Loading ${file.name}…`);
     try {
-      const mesh = await readModelFile(file);
+      const loaded = await readModelFile(file);
       panel.close();
-      app.setSource(mesh, file.name);
+      app.setSource(loaded.mesh, file.name, loaded.palette);
       await app.refresh();
       viewport.fitCamera();
       dropHint.classList.add('hidden');
-      if (!app.canEditGeometry) {
+      const warnings = loaded.warnings.join('; ');
+      if (warnings) {
+        status.setMessage(warnings, 'warn');
+      } else if (!app.canEditGeometry) {
         status.setMessage('Source mesh is not manifold: booleans, cut, split, and text are disabled', 'warn');
       } else if (app.repair) {
         const r = app.repair;
@@ -74,14 +78,15 @@ async function boot(): Promise<void> {
       if (!parts.length) return status.setMessage('Nothing to export', 'warn');
       const format = b.dataset.format as ExportFormat;
       const name = `${baseName(app.sourceName)}-remix`;
-      const bytes = exportModel(parts, format, name);
+      const { bytes, droppedColors } = exportModel(parts, format, name, app.palette);
       download(bytes, `${name}.${format}`);
-      status.setMessage(`Exported ${name}.${format}`, 'ok');
+      if (droppedColors) status.setMessage(`Exported ${name}.${format} (colors dropped; use 3MF to keep them)`, 'warn');
+      else status.setMessage(`Exported ${name}.${format}`, 'ok');
     });
   });
 
   $('btn-save-recipe').addEventListener('click', () => {
-    const recipe = app.history.toJSON();
+    const recipe = app.history.toJSON(app.palette);
     if (!recipe.ops.length) return status.setMessage('History is empty; nothing to save', 'warn');
     download(JSON.stringify(recipe, null, 2), `${baseName(app.sourceName)}-recipe.json`, 'application/json');
     status.setMessage('Recipe saved', 'ok');
@@ -92,12 +97,14 @@ async function boot(): Promise<void> {
     const file = await pickFile($<HTMLInputElement>('recipe-input'));
     if (!file) return;
     try {
-      const parsed = History.fromJSON(JSON.parse(await file.text()));
-      if (parsed.ops.some((op) => op.type === 'text') && !app.engine.font) {
+      const recipe = validateRecipe(JSON.parse(await file.text()));
+      if (recipe.ops.some((op) => op.type === 'text') && !app.engine.font) {
         app.engine.font = await getFont();
       }
-      app.history.pushAll(parsed.ops);
-      status.setMessage(`Applied ${parsed.ops.length} steps from ${file.name}`, 'ok');
+      if (recipe.palette) app.setPalette(recipe.palette);
+      app.history.pushAll(recipe.ops);
+      const withPalette = recipe.palette ? ` and its ${recipe.palette.length}-slot palette` : '';
+      status.setMessage(`Applied ${recipe.ops.length} steps${withPalette} from ${file.name}`, 'ok');
     } catch (e) {
       status.setMessage(`Could not apply recipe: ${e instanceof Error ? e.message : String(e)}`, 'err');
     }

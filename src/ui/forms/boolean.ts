@@ -82,7 +82,7 @@ export function buildBooleanForm(host: HTMLElement, app: AppState): FormHandle {
     const f = file.files?.[0];
     if (!f) return;
     try {
-      const m = await loadModel(f.name, await f.arrayBuffer());
+      const m = (await loadModel(f.name, await f.arrayBuffer())).mesh;
       mesh = { name: f.name, mesh: m };
       const b = bounds(m);
       fileInfo.textContent = `${f.name}: ${fmt(b.size[0])} × ${fmt(b.size[1])} × ${fmt(b.size[2])} mm`;

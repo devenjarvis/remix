@@ -1,9 +1,8 @@
-import { loadModel } from '../io/load';
-import type { TriMesh } from '../core/types';
+import { loadModel, type Loaded } from '../io/load';
 
-export type FileHandler = (name: string, mesh: TriMesh) => void;
+export type FileHandler = (name: string, loaded: Loaded) => void;
 
-export async function readModelFile(file: File): Promise<TriMesh> {
+export async function readModelFile(file: File): Promise<Loaded> {
   return loadModel(file.name, await file.arrayBuffer());
 }
 
