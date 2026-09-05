@@ -5,11 +5,12 @@ const NEAREST_COS = Math.cos((30 * Math.PI) / 180);
 
 const adjacencyCache = new WeakMap<Uint32Array, Int32Array>();
 
-/** 3 entries per triangle: neighbor triangle index across edge (v0,v1), (v1,v2), (v2,v0); -1 when none. */
-export function buildAdjacency(m: TriMesh): Int32Array {
+export type VertexTriangles = { offsets: Uint32Array; incident: Uint32Array };
+
+/** Triangles incident to each vertex: those of vertex v are incident[offsets[v] .. offsets[v + 1]). */
+export function vertexTriangles(m: TriMesh): VertexTriangles {
   const idx = m.indices;
-  const numTri = idx.length / 3;
-  let numVert = 0;
+  let numVert = m.positions.length / 3;
   for (let i = 0; i < idx.length; i++) if (idx[i] >= numVert) numVert = idx[i] + 1;
   const offsets = new Uint32Array(numVert + 1);
   for (let i = 0; i < idx.length; i++) offsets[idx[i] + 1]++;
@@ -17,6 +18,14 @@ export function buildAdjacency(m: TriMesh): Int32Array {
   const incident = new Uint32Array(idx.length);
   const cursor = offsets.slice(0, numVert);
   for (let i = 0; i < idx.length; i++) incident[cursor[idx[i]]++] = (i / 3) | 0;
+  return { offsets, incident };
+}
+
+/** 3 entries per triangle: neighbor triangle index across edge (v0,v1), (v1,v2), (v2,v0); -1 when none. */
+export function buildAdjacency(m: TriMesh): Int32Array {
+  const idx = m.indices;
+  const numTri = idx.length / 3;
+  const { offsets, incident } = vertexTriangles(m);
   const adj = new Int32Array(idx.length).fill(-1);
   for (let t = 0; t < numTri; t++) {
     for (let k = 0; k < 3; k++) {
