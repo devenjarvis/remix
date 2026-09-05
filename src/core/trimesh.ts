@@ -54,12 +54,72 @@ export function bounds(m: TriMesh): Bounds {
   return { min, max, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
 }
 
+let reserved: { base: number; count: number } | null = null;
+
+/** Reserves one manifold originalID per color slot (Base plus MAX_SLOTS) on first use; needs getManifold() resolved. */
+export function slotIds(): { base: number; count: number } {
+  if (!reserved) {
+    const count = MAX_SLOTS + 1;
+    reserved = { base: manifold().Manifold.reserveIDs(count), count };
+  }
+  return reserved;
+}
+
+function slotOfId(id: number): number {
+  const { base, count } = slotIds();
+  return id >= base && id < base + count ? id - base : 0;
+}
+
 export function toManifold(m: TriMesh): Manifold {
   const { Mesh, Manifold } = manifold();
   const w = weld(m);
-  const mesh = new Mesh({ numProp: 3, vertProperties: w.positions, triVerts: w.indices });
+  const painted = w.colors && w.colors.some((c) => c !== 0);
+  if (!painted) {
+    const mesh = new Mesh({ numProp: 3, vertProperties: w.positions, triVerts: w.indices });
+    mesh.merge();
+    return new Manifold(mesh);
+  }
+  const colors = w.colors!;
+  const numTri = colors.length;
+  const order = Array.from({ length: numTri }, (_, i) => i).sort((a, b) => colors[a] - colors[b] || a - b);
+  const triVerts = new Uint32Array(numTri * 3);
+  const runIndex: number[] = [];
+  const runOriginalID: number[] = [];
+  const { base } = slotIds();
+  let last = -1;
+  order.forEach((t, i) => {
+    triVerts.set(w.indices.subarray(t * 3, t * 3 + 3), i * 3);
+    if (colors[t] !== last) {
+      last = colors[t];
+      runIndex.push(i * 3);
+      runOriginalID.push(base + last);
+    }
+  });
+  runIndex.push(numTri * 3);
+  const mesh = new Mesh({
+    numProp: 3,
+    vertProperties: w.positions,
+    triVerts,
+    runIndex: Uint32Array.from(runIndex),
+    runOriginalID: Uint32Array.from(runOriginalID),
+  });
   mesh.merge();
   return new Manifold(mesh);
+}
+
+/** Rebuilds the manifold with every triangle tagged as `slot`; slot 0 leaves it untagged. */
+export function withSlot(m: Manifold, slot: number): Manifold {
+  const { Mesh, Manifold } = manifold();
+  const mesh = m.getMesh();
+  if (slot <= 0) return new Manifold(mesh);
+  const tagged = new Mesh({
+    numProp: mesh.numProp,
+    vertProperties: mesh.vertProperties,
+    triVerts: mesh.triVerts,
+    runIndex: Uint32Array.from([0, mesh.triVerts.length]),
+    runOriginalID: Uint32Array.from([slotIds().base + slot]),
+  });
+  return new Manifold(tagged);
 }
 
 export function fromManifold(m: Manifold): TriMesh {
@@ -70,7 +130,24 @@ export function fromManifold(m: Manifold): TriMesh {
     positions[i * 3 + 1] = mesh.vertProperties[i * mesh.numProp + 1];
     positions[i * 3 + 2] = mesh.vertProperties[i * mesh.numProp + 2];
   }
-  return { positions, indices: new Uint32Array(mesh.triVerts) };
+  const out: TriMesh = { positions, indices: new Uint32Array(mesh.triVerts) };
+  const numTri = mesh.triVerts.length / 3;
+  const runs = mesh.runOriginalID;
+  if (runs && runs.length && reserved) {
+    const colors = new Uint8Array(numTri);
+    let painted = false;
+    for (let r = 0; r < runs.length; r++) {
+      const slot = slotOfId(runs[r]);
+      if (!slot) continue;
+      const start = mesh.runIndex[r] / 3;
+      const end = (r + 1 < mesh.runIndex.length ? mesh.runIndex[r + 1] : mesh.triVerts.length) / 3;
+      if (end <= start) continue;
+      colors.fill(slot, start, end);
+      painted = true;
+    }
+    if (painted) out.colors = colors;
+  }
+  return out;
 }
 
 export function isManifold(m: TriMesh): { ok: boolean; status: string } {

@@ -5,6 +5,7 @@ import type { Bounds, TriMesh, Vec3 } from '../core/types';
 import { bounds, mergeMeshes, placeOnBed } from '../core/trimesh';
 import { repairSmallDefects, type RepairReport } from '../core/repair';
 import { validateOp } from '../core/ops/validate';
+import { defaultPalette, type PaletteSlot } from '../core/color';
 
 export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number };
 
@@ -17,6 +18,8 @@ export interface ViewportLike {
   onFacePick(cb: (hit: FaceHit) => void): () => void;
   setPickMode(on: boolean): void;
   fitCamera(): void;
+  /** Optional until the viewport renders per-triangle colors. */
+  setPalette?(hexes: string[]): void;
 }
 
 type Listener = () => void;
@@ -24,6 +27,8 @@ type Listener = () => void;
 export class AppState {
   source: TriMesh | null = null;
   sourceName = 'model';
+  /** Base plus up to 16 filament slots; index matches TriMesh.colors values. */
+  palette: PaletteSlot[] = defaultPalette();
   result: Result | null = null;
   repair: RepairReport | null = null;
   /** An uncommitted op evaluated on top of the active history, shown until cleared or applied. */
@@ -64,7 +69,8 @@ export class AppState {
     return this.source !== null && this.engine.sourceManifold;
   }
 
-  setSource(m: TriMesh, name: string): void {
+  setSource(m: TriMesh, name: string, palette?: PaletteSlot[]): void {
+    this.palette = palette ?? defaultPalette();
     let mesh = placeOnBed(m);
     this.repair = null;
     this.engine.setSource(mesh);
@@ -83,6 +89,13 @@ export class AppState {
     this.source = mesh;
     this.sourceName = name;
     this.history.clear();
+  }
+
+  /** Recolors the viewport at once and adds nothing to history. */
+  setPalette(p: PaletteSlot[]): void {
+    this.palette = p;
+    this.viewport?.setPalette?.(p.map((s) => s.hex));
+    this.emit();
   }
 
   pushOp(op: Op): void {
