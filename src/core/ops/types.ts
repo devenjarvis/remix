@@ -1,5 +1,6 @@
 import type { ManifoldToplevel } from 'manifold-3d';
 import type { Vec3 } from '../types';
+import type { PaletteSlot } from '../color';
 
 export type Axis = 'x' | 'y' | 'z';
 
@@ -51,7 +52,7 @@ export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | B
 
 export type OpContext = { manifold: ManifoldToplevel; font?: unknown };
 
-export type Recipe = { version: 1; ops: Op[] };
+export type Recipe = { version: 1 | 2; palette?: PaletteSlot[]; ops: Op[] };
 
 export function newId(): string {
   return Math.random().toString(36).slice(2, 10);

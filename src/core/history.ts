@@ -1,4 +1,5 @@
 import type { Op, Recipe } from './ops/types';
+import type { PaletteSlot } from './color';
 import { validateOp, validateRecipe } from './ops/validate';
 
 type Listener = () => void;
@@ -70,8 +71,10 @@ export class History {
     this.emit();
   }
 
-  toJSON(): Recipe {
-    return { version: 1, ops: this.active.map((o) => ({ ...o })) };
+  /** Version 2 carries the palette; without one the recipe stays version 1. */
+  toJSON(palette?: PaletteSlot[]): Recipe {
+    const ops = this.active.map((o) => ({ ...o }));
+    return palette ? { version: 2, palette: palette.map((s) => ({ ...s })), ops } : { version: 1, ops };
   }
 
   static fromJSON(r: unknown): History {

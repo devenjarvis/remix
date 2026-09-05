@@ -13,7 +13,7 @@ describe('recipe validation', () => {
   });
 
   it('rejects malformed ops', () => {
-    expect(() => validateRecipe({ version: 2, ops: [] })).toThrow(/version/);
+    expect(() => validateRecipe({ version: 3, ops: [] })).toThrow(/version/);
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'scale', factors: [1, 'x', 1] }] })).toThrow(/scale factors/);
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'scale', factors: [1, NaN, 1] }] })).toThrow(/scale factors/);
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'boolean', mode: 'union', tool: { kind: 'box', size: [1, 1, 1] }, matrix: [1, 2] }] })).toThrow(/matrix/);

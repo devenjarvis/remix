@@ -1,5 +1,5 @@
 import type { Op, Recipe, Selection, ToolBody } from './types';
-import { MAX_SLOTS } from '../color';
+import { HEX_RE, MAX_SLOTS, type PaletteSlot } from '../color';
 
 const AXES = ['x', 'y', 'z'];
 
@@ -136,10 +136,23 @@ export function validateOp(v: unknown): Op {
   }
 }
 
+export function validatePalette(v: unknown): PaletteSlot[] {
+  if (!Array.isArray(v) || !v.length || v.length > MAX_SLOTS + 1) fail(`palette must list 1 to ${MAX_SLOTS + 1} slots`);
+  return v.map((s) => {
+    if (!s || typeof s !== 'object') fail('palette slot must be an object');
+    const { name, hex } = s as Record<string, unknown>;
+    if (typeof name !== 'string') fail('palette slot name must be a string');
+    if (typeof hex !== 'string' || !HEX_RE.test(hex)) fail('palette slot hex must be #RRGGBB');
+    return { name, hex };
+  });
+}
+
 export function validateRecipe(v: unknown): Recipe {
   if (!v || typeof v !== 'object') fail('not an object');
   const r = v as Record<string, unknown>;
-  if (r.version !== 1) fail(`unsupported version ${String(r.version)}`);
+  if (r.version !== 1 && r.version !== 2) fail(`unsupported version ${String(r.version)}`);
   if (!Array.isArray(r.ops)) fail('ops must be an array');
-  return { version: 1, ops: r.ops.map(validateOp) };
+  const recipe: Recipe = { version: r.version, ops: r.ops.map(validateOp) };
+  if (r.version === 2 && r.palette !== undefined) recipe.palette = validatePalette(r.palette);
+  return recipe;
 }

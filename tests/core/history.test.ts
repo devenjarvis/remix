@@ -4,6 +4,7 @@ import { bounds } from '../../src/core/trimesh';
 import { History } from '../../src/core/history';
 import { Engine } from '../../src/core/engine';
 import { newId, describeOp } from '../../src/core/ops/types';
+import { validateRecipe } from '../../src/core/ops/validate';
 import type { Op, ScaleOp } from '../../src/core/ops/types';
 import { unweldedCube } from './trimesh.test';
 
@@ -114,5 +115,36 @@ describe('history + engine', () => {
     expect(describeOp(scale(2))).toBe('Scale 2×');
     expect(describeOp({ id: 'a', type: 'scale', factors: [1, 2, 3] })).toBe('Scale 1×, 2×, 3×');
     expect(describeOp({ id: 'a', type: 'cut', axis: 'z', offset: 5, keep: 'both' })).toBe('Cut Z at 5 mm');
+  });
+});
+
+describe('recipe palette', () => {
+  const palette = [{ name: 'Base', hex: '#b8c4d6' }, { name: 'Red', hex: '#ff0000' }];
+
+  it('toJSON with a palette writes version 2', () => {
+    const h = new History();
+    h.push(scale(2));
+    expect(h.toJSON().version).toBe(1);
+    const r = h.toJSON(palette);
+    expect(r.version).toBe(2);
+    expect(r.palette).toEqual(palette);
+    const back = History.fromJSON(JSON.parse(JSON.stringify(r)));
+    expect(back.ops).toEqual(h.ops);
+  });
+
+  it('fromJSON accepts version 1 without palette and returns the palette from version 2', () => {
+    const v1 = { version: 1, ops: [scale(2)] };
+    expect(validateRecipe(v1).palette).toBeUndefined();
+    const v2 = validateRecipe({ version: 2, palette, ops: [scale(2)] });
+    expect(v2.palette).toEqual(palette);
+    expect(validateRecipe({ version: 2, ops: [] }).palette).toBeUndefined();
+  });
+
+  it('validateRecipe rejects a palette with 18 slots or a hex that is not #RRGGBB', () => {
+    const many = Array.from({ length: 18 }, (_, i) => ({ name: `c${i}`, hex: '#000000' }));
+    expect(() => validateRecipe({ version: 2, palette: many, ops: [] })).toThrow(/palette/i);
+    expect(() => validateRecipe({ version: 2, palette: [{ name: 'x', hex: 'red' }], ops: [] })).toThrow(/hex/i);
+    expect(() => validateRecipe({ version: 2, palette: [{ name: 3, hex: '#000000' }], ops: [] })).toThrow(/name/i);
+    expect(() => validateRecipe({ version: 3, ops: [] })).toThrow(/version/i);
   });
 });
