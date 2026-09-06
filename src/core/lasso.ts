@@ -100,20 +100,76 @@ export function lassoField(m: TriMesh, eye: Vec3, polygon: Vec3[]): Float32Array
   return out;
 }
 
-/** Sorted triangles that face the eye, whose centroid projects inside the polygon, and whose centroid is visible from the eye. */
-export function selectLasso(m: TriMesh, eye: Vec3, polygon: Vec3[], normals = triangleNormals(m), bvh: Bvh = bvhOf(m)): Uint32Array {
-  const numTri = m.indices.length / 3;
+/**
+ * Crossing parameter along mesh edge (u, v) of the outline swept from the eye through the polygon,
+ * for use as the `param` of splitByField; NaN when no polygon edge crosses it.
+ */
+export function lassoCrossing(m: TriMesh, eye: Vec3, polygon: Vec3[]): (u: number, v: number) => number {
+  const p = m.positions;
+  const n = polygon.length;
+  const planes = new Float64Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const a = polygon[i], b = polygon[(i + 1) % n];
+    const ax = a[0] - eye[0], ay = a[1] - eye[1], az = a[2] - eye[2];
+    const bx = b[0] - eye[0], by = b[1] - eye[1], bz = b[2] - eye[2];
+    planes[i * 4] = ay * bz - az * by;
+    planes[i * 4 + 1] = az * bx - ax * bz;
+    planes[i * 4 + 2] = ax * by - ay * bx;
+  }
   const { poly, project } = frameOf(eye, polygon);
-  const c: Vec3 = [0, 0, 0];
   const q: [number, number] = [0, 0];
-  const picked: number[] = [];
-  for (let t = 0; t < numTri; t++) {
+  return (u, v) => {
+    let best = NaN;
+    for (let i = 0; i < n; i++) {
+      const nx = planes[i * 4], ny = planes[i * 4 + 1], nz = planes[i * 4 + 2];
+      const fu = nx * (p[u * 3] - eye[0]) + ny * (p[u * 3 + 1] - eye[1]) + nz * (p[u * 3 + 2] - eye[2]);
+      const fv = nx * (p[v * 3] - eye[0]) + ny * (p[v * 3 + 1] - eye[1]) + nz * (p[v * 3 + 2] - eye[2]);
+      if (!(fu * fv < 0)) continue;
+      const t = fu / (fu - fv);
+      if (!(Number.isNaN(best) || t < best)) continue;
+      const x = p[u * 3] + (p[v * 3] - p[u * 3]) * t, y = p[u * 3 + 1] + (p[v * 3 + 1] - p[u * 3 + 1]) * t, z = p[u * 3 + 2] + (p[v * 3 + 2] - p[u * 3 + 2]) * t;
+      if (!project(x, y, z, q)) continue;
+      const j = (i + 1) % n;
+      const ex = poly[j * 2] - poly[i * 2], ey = poly[j * 2 + 1] - poly[i * 2 + 1];
+      const s = ((q[0] - poly[i * 2]) * ex + (q[1] - poly[i * 2 + 1]) * ey) / (ex * ex + ey * ey || 1);
+      if (s >= 0 && s <= 1) best = t;
+    }
+    return best;
+  };
+}
+
+/** 1 per triangle that faces the eye and whose centroid is not occluded from it; triangles with `mask` 0 are skipped and left 0. */
+export function lassoVisibility(m: TriMesh, eye: Vec3, normals = triangleNormals(m), bvh: Bvh = bvhOf(m), mask?: Uint8Array): Uint8Array {
+  const out = new Uint8Array(m.indices.length / 3);
+  const c: Vec3 = [0, 0, 0];
+  for (let t = 0; t < out.length; t++) {
+    if (mask && !mask[t]) continue;
     triangleCentroid(m, t, c);
     const fx = eye[0] - c[0], fy = eye[1] - c[1], fz = eye[2] - c[2];
     if (normals[t * 3] * fx + normals[t * 3 + 1] * fy + normals[t * 3 + 2] * fz <= 0) continue;
-    if (!project(c[0], c[1], c[2], q) || !insidePolygon(poly, q[0], q[1])) continue;
-    if (occluded(bvh, m, eye, c, t)) continue;
-    picked.push(t);
+    if (!occluded(bvh, m, eye, c, t)) out[t] = 1;
   }
+  return out;
+}
+
+/** 1 per triangle whose centroid projects from the eye inside the polygon, regardless of visibility. */
+export function lassoInside(m: TriMesh, eye: Vec3, polygon: Vec3[]): Uint8Array {
+  const out = new Uint8Array(m.indices.length / 3);
+  const { poly, project } = frameOf(eye, polygon);
+  const c: Vec3 = [0, 0, 0];
+  const q: [number, number] = [0, 0];
+  for (let t = 0; t < out.length; t++) {
+    triangleCentroid(m, t, c);
+    if (project(c[0], c[1], c[2], q) && insidePolygon(poly, q[0], q[1])) out[t] = 1;
+  }
+  return out;
+}
+
+/** Sorted triangles that face the eye, whose centroid projects inside the polygon, and whose centroid is visible from the eye. */
+export function selectLasso(m: TriMesh, eye: Vec3, polygon: Vec3[], normals = triangleNormals(m), bvh: Bvh = bvhOf(m)): Uint32Array {
+  const inside = lassoInside(m, eye, polygon);
+  const visible = lassoVisibility(m, eye, normals, bvh, inside);
+  const picked: number[] = [];
+  for (let t = 0; t < inside.length; t++) if (inside[t] && visible[t]) picked.push(t);
   return Uint32Array.from(picked);
 }

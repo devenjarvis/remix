@@ -4,8 +4,8 @@ import { getManifold, manifold } from '../../src/core/manifold';
 import { parseFont } from '../../src/core/font';
 import { applyOp } from '../../src/core/ops/registry';
 import '../../src/core/ops';
-import { consolidatePaints, paintOpFromHit, thinStroke } from '../../src/core/ops/paint';
-import { describeOp, type Op, type OpContext, type PaintOp } from '../../src/core/ops/types';
+import { consolidatePaints, paintOpFromHit, resolveSelection, thinStroke } from '../../src/core/ops/paint';
+import { describeOp, type Op, type OpContext, type PaintOp, type Selection } from '../../src/core/ops/types';
 import { validateOp } from '../../src/core/ops/validate';
 import { fromManifold, hasPendingPaint, toManifold, weld } from '../../src/core/trimesh';
 import { Engine } from '../../src/core/engine';
@@ -381,5 +381,135 @@ describe('smooth edges', () => {
     const op = paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1');
     expect(op.edges).toBe('smooth');
     expect(paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1', 'seed', 'triangles').edges).toBe('triangles');
+  });
+});
+
+describe('paint gestures', () => {
+  const op = (color: number, selections: Selection[], edges: PaintOp['edges'] = 'triangles', id = 'g'): PaintOp => ({ id, type: 'paint', color, edges, select: { kind: 'multi', selections } });
+  const topFill = (mode?: 'add' | 'subtract', angle = 30): Selection => ({ kind: 'fill', part: 0, point: [5, 5, 10], normal: [0, 0, 1], angle, ...(mode ? { mode } : {}) });
+  const refinedCube = () => applyOp([cube()], { id: 'r', type: 'refine', length: 1 }, ctx);
+  const top = (n: number[]) => n[2] > 0.9;
+  const xy = (c: number[]) => Math.hypot(c[0] - 5, c[1] - 5);
+
+  it('subtract removes a region and invert flips the rest', async () => {
+    const none = fromManifold((await applyOp([cube()], op(1, [topFill(), topFill('subtract', 10)]), ctx))[0]);
+    expect(none.colors).toBeUndefined();
+    const all = fromManifold((await applyOp([cube()], op(1, [topFill(), topFill('subtract', 10), { kind: 'invert' }]), ctx))[0]);
+    expect(all.colors!.every((c) => c === 1)).toBe(true);
+    const flipped = fromManifold((await applyOp([cube()], op(1, [topFill(), { kind: 'invert' }]), ctx))[0]);
+    expect(only(slotsWhere(flipped, top), 0)).toBe(true);
+    expect(only(slotsWhere(flipped, (n) => !top(n)), 1)).toBe(true);
+  });
+
+  it('grow and shrink change the painted band on a refined cube', async () => {
+    const parts = await refinedCube();
+    const brush = (radius: number): Selection => ({ kind: 'brush', part: 0, points: [[5, 5, 10]], normals: [[0, 0, 1]], radius });
+    const grown = fromManifold((await applyOp(parts, op(2, [brush(2), { kind: 'grow', distance: 3 }]), ctx))[0]);
+    expect(only(slotsWhere(grown, (n, c) => top(n) && xy(c) < 3.5), 2)).toBe(true);
+    expect(only(slotsWhere(grown, (n, c) => top(n) && xy(c) > 5.5), 0)).toBe(true);
+    const shrunk = fromManifold((await applyOp(parts, op(3, [brush(5), { kind: 'shrink', distance: 3 }]), ctx))[0]);
+    expect(only(slotsWhere(shrunk, (n, c) => top(n) && xy(c) < 1), 3)).toBe(true);
+    expect(only(slotsWhere(shrunk, (n, c) => top(n) && xy(c) > 3.5), 0)).toBe(true);
+    const gone = fromManifold((await applyOp(parts, op(3, [brush(2), { kind: 'shrink', distance: 10 }]), ctx))[0]);
+    expect(gone.colors).toBeUndefined();
+  });
+
+  it('dam stops a fill at painted triangles', async () => {
+    const painted = await applyOp([cube()], op(1, [topFill()]), ctx);
+    const sel: Selection = { kind: 'fill', part: 0, point: [10, 5, 5], normal: [1, 0, 0], angle: 100, dam: true };
+    const m = fromManifold((await applyOp(painted, op(2, [sel], 'triangles', 'h'), ctx))[0]);
+    expect(only(slotsWhere(m, top), 1)).toBe(true);
+    expect(only(slotsWhere(m, (n) => n[0] < -0.9), 0)).toBe(true);
+    expect(only(slotsWhere(m, (n) => !top(n) && n[0] > -0.9), 2)).toBe(true);
+    const noDam = fromManifold((await applyOp(painted, op(2, [{ ...sel, dam: false }], 'triangles', 'h'), ctx))[0]);
+    expect(only(slotsWhere(noDam, top), 2)).toBe(true);
+  });
+
+  it('a segment gesture paints one cube face', async () => {
+    const sel: Selection = { kind: 'segment', part: 0, point: [5, 5, 10], normal: [0, 0, 1], tolerance: 10 };
+    const m = fromManifold((await applyOp([cube()], op(4, [sel], 'smooth'), ctx))[0]);
+    expect(only(slotsWhere(m, top), 4)).toBe(true);
+    expect(only(slotsWhere(m, (n) => !top(n)), 0)).toBe(true);
+    await expect(applyOp([cube()], op(4, [{ ...sel, point: [5, 5, 15] }]), ctx)).rejects.toThrow(/surface not found/i);
+  });
+
+  it('a lasso gesture paints the visible cube top with a straight edge', async () => {
+    const parts = await refinedCube();
+    const before = fromManifold(parts[0]);
+    const square: [number, number, number][] = [[2, 2, 20], [8, 2, 20], [8, 8, 20], [2, 8, 20]];
+    const sel: Selection = { kind: 'lasso', part: 0, eye: [5, 5, 50], polygon: square };
+    const m = fromManifold((await applyOp(parts, op(5, [sel], 'smooth'), ctx))[0]);
+    const inside = (c: number[]) => Math.max(Math.abs(c[0] - 5), Math.abs(c[1] - 5));
+    expect(only(slotsWhere(m, (n, c) => top(n) && inside(c) < 3.9), 5)).toBe(true);
+    expect(only(slotsWhere(m, (n, c) => top(n) && inside(c) > 4.1), 0)).toBe(true);
+    expect(only(slotsWhere(m, (n) => !top(n)), 0)).toBe(true);
+    let added = 0;
+    for (let v = before.positions.length; v < m.positions.length; v += 3) {
+      const x = m.positions[v], y = m.positions[v + 1], z = m.positions[v + 2];
+      expect(z).toBeCloseTo(10, 3);
+      expect(Math.min(Math.abs(x - 1), Math.abs(x - 9), Math.abs(y - 1), Math.abs(y - 9))).toBeLessThan(1e-3);
+      added++;
+    }
+    expect(added).toBeGreaterThan(8);
+    const whole = fromManifold((await applyOp(parts, op(5, [sel], 'triangles'), ctx))[0]);
+    expect(whole.indices).toBe(before.indices);
+    expect(only(slotsWhere(whole, (n, c) => top(n) && inside(c) < 3.5), 5)).toBe(true);
+    expect(only(slotsWhere(whole, (n, c) => top(n) && inside(c) > 4.5), 0)).toBe(true);
+  });
+
+  it('two adjacent smooth paints on a refined sphere add no vertices along the first boundary', async () => {
+    const sphere = await applyOp([manifold().Manifold.sphere(10, 32)], { id: 'r', type: 'refine', length: 1 }, ctx);
+    const cap: Selection = { kind: 'brush', part: 0, points: [[0, 0, 10]], normals: [[0, 0, 1]], radius: 4 };
+    const ring: Selection = { kind: 'brush', part: 0, points: [[6, 0, 8]], normals: [[0.6, 0, 0.8]], radius: 6, dam: true };
+    const plain = fromManifold(sphere[0]);
+    const first = await applyOp(sphere, op(1, [cap], 'smooth', 'a'), ctx);
+    const firstMesh = fromManifold(first[0]);
+    const second = fromManifold((await applyOp(first, op(2, [ring], 'smooth', 'b'), ctx))[0]);
+    const alone = fromManifold((await applyOp(sphere, op(2, [{ ...ring, dam: false }], 'smooth', 'b'), ctx))[0]);
+    const addedBySecond = (second.positions.length - firstMesh.positions.length) / 3;
+    const addedAlone = (alone.positions.length - plain.positions.length) / 3;
+    expect(addedBySecond).toBeGreaterThan(0);
+    expect(addedBySecond).toBeLessThanOrEqual(addedAlone);
+    let nearFirst = 0;
+    for (let v = firstMesh.positions.length; v < second.positions.length; v += 3) {
+      if (Math.hypot(second.positions[v], second.positions[v + 1], second.positions[v + 2] - 10) < 4.3) nearFirst++;
+    }
+    expect(nearFirst).toBeLessThanOrEqual(6);
+    expect(only(slotsWhere(second, (n, c) => Math.hypot(c[0], c[1], c[2] - 10) < 3), 1)).toBe(true);
+    expect(only(slotsWhere(second, (n, c) => Math.hypot(c[0] - 6, c[1], c[2] - 8) < 3 && Math.hypot(c[0], c[1], c[2] - 10) > 5), 2)).toBe(true);
+  });
+
+  it('consolidatePaints leaves a subtract, invert, grow, or dam op unmerged', () => {
+    const a = fill(1, [5, 5, 10], [0, 0, 1]);
+    const plain: PaintOp = { ...fill(1, [5, 0, 5], [0, -1, 0]), id: 'b' };
+    expect(consolidatePaints([a, plain]).length).toBe(1);
+    const later: Selection[] = [
+      { ...topFill('subtract') },
+      { kind: 'invert' },
+      { kind: 'grow', distance: 1 },
+      { kind: 'shrink', distance: 1 },
+      { kind: 'fill', part: 0, point: [5, 5, 10], normal: [0, 0, 1], angle: 30, dam: true },
+    ];
+    for (const sel of later) {
+      const single: PaintOp = { ...a, id: 'c', select: sel };
+      expect(consolidatePaints([a, single]).length).toBe(2);
+      const inMulti: PaintOp = { ...a, id: 'c', select: { kind: 'multi', selections: [plain.select, sel] } };
+      expect(consolidatePaints([a, inMulti]).length).toBe(2);
+      expect(consolidatePaints([single, plain]).length).toBe(1);
+    }
+    const explicitAdd: PaintOp = { ...a, id: 'c', select: { ...topFill('add') } };
+    expect(consolidatePaints([a, explicitAdd]).length).toBe(1);
+  });
+
+  it('resolveSelection matches what the handler paints', async () => {
+    const parts = await refinedCube();
+    const m = fromManifold(parts[0]);
+    const sels: Selection[] = [topFill(), { kind: 'brush', part: 0, points: [[5, 5, 10]], normals: [[0, 0, 1]], radius: 3, mode: 'subtract' }, { kind: 'grow', distance: 1 }];
+    const set = resolveSelection(m, sels);
+    const painted = fromManifold((await applyOp(parts, op(6, sels), ctx))[0]);
+    expect(painted.indices).toBe(m.indices);
+    for (let t = 0; t < set.length; t++) expect(painted.colors![t]).toBe(set[t] ? 6 : 0);
+    expect(set.some((v) => v)).toBe(true);
+    expect(set.some((v) => !v)).toBe(true);
   });
 });

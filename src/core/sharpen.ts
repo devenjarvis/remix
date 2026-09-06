@@ -11,13 +11,27 @@ const MIN_SPAN = 1e-6;
 export type SplitResult = { mesh: TriMesh; source: Uint32Array; inside: Uint8Array };
 
 function cornerAngle(p: Float32Array, idx: Uint32Array, t: number, v: number): number {
-  let k = 0;
-  while (k < 2 && idx[t * 3 + k] !== v) k++;
+  const k = idx[t * 3] === v ? 0 : idx[t * 3 + 1] === v ? 1 : 2;
   const a = idx[t * 3 + k] * 3, b = idx[t * 3 + ((k + 1) % 3)] * 3, c = idx[t * 3 + ((k + 2) % 3)] * 3;
   const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
   const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
   const cross = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
   return Math.atan2(cross, ux * vx + uy * vy + uz * vz);
+}
+
+/** 1 per vertex that ends an edge whose two triangles differ in selection. */
+function boundaryVertices(m: TriMesh, selected: Uint8Array, adj: Int32Array, numVert: number): Uint8Array {
+  const idx = m.indices;
+  const out = new Uint8Array(numVert);
+  for (let t = 0; t < selected.length; t++) {
+    for (let k = 0; k < 3; k++) {
+      const n = adj[t * 3 + k];
+      if (n >= 0 && selected[n] === selected[t]) continue;
+      out[idx[t * 3 + k]] = 1;
+      out[idx[t * 3 + ((k + 1) % 3)]] = 1;
+    }
+  }
+  return out;
 }
 
 /**
@@ -31,20 +45,20 @@ function cornerAngle(p: Float32Array, idx: Uint32Array, t: number, v: number): n
 export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32Array, vt: VertexTriangles, adj = adjacencyOf(m)): Float32Array {
   const idx = m.indices, p = m.positions;
   const numVert = vt.offsets.length - 1;
+  const boundary = boundaryVertices(m, selected, adj, numVert);
   const onContour = new Uint8Array(numVert);
   const ends = [0, 0];
   for (let v = 0; v < numVert; v++) {
+    if (!boundary[v]) continue;
     let count = 0, crease = false;
     for (let j = vt.offsets[v]; j < vt.offsets[v + 1] && !crease; j++) {
       const n = vt.incident[j];
-      let k = 0;
-      while (k < 2 && idx[n * 3 + k] !== v) k++;
-      const e = k, other = idx[n * 3 + ((k + 1) % 3)];
-      const across = adj[n * 3 + e];
+      const k = idx[n * 3] === v ? 0 : idx[n * 3 + 1] === v ? 1 : 2;
+      const across = adj[n * 3 + k];
       if (across < 0 || selected[n] === selected[across]) continue;
       const dot = normals[n * 3] * normals[across * 3] + normals[n * 3 + 1] * normals[across * 3 + 1] + normals[n * 3 + 2] * normals[across * 3 + 2];
       if (dot < SMOOTH_COS) crease = true;
-      else if (count < 2) ends[count++] = other;
+      else if (count < 2) ends[count++] = idx[n * 3 + ((k + 1) % 3)];
       else count++;
     }
     if (crease || count !== 2) continue;
@@ -60,6 +74,10 @@ export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32
     for (let k = 0; k < 3; k++) {
       const v = idx[t * 3 + k];
       if (onContour[v]) continue;
+      if (!boundary[v]) {
+        out[t * 3 + k] = selected[t] ? 0.5 : -0.5;
+        continue;
+      }
       let total = 0, picked = 0;
       for (let j = vt.offsets[v]; j < vt.offsets[v + 1]; j++) {
         const n = vt.incident[j];
@@ -86,11 +104,12 @@ export function planeField(m: TriMesh, z: number): Float32Array {
 /**
  * Splits every triangle whose field changes sign along the 0 iso-line. Each crossed edge gets one
  * new vertex shared by both adjacent triangles. A crossing within 2% of either endpoint is not split,
- * so the contour snaps to that vertex. `source` maps output triangles to input triangles;
+ * so the contour snaps to that vertex. `param` may give the crossing parameter along edge (u, v)
+ * instead of linear interpolation; NaN falls back to interpolation. `source` maps output triangles to input triangles;
  * `inside` marks output triangles whose centroid field value is positive. Returns the input arrays
  * by reference when no edge is crossed.
  */
-export function splitByField(m: TriMesh, field: Float32Array): SplitResult {
+export function splitByField(m: TriMesh, field: Float32Array, param?: (u: number, v: number, fu: number, fv: number) => number): SplitResult {
   const idx = m.indices, p = m.positions;
   const numTri = idx.length / 3;
   const numVert = p.length / 3;
@@ -100,7 +119,8 @@ export function splitByField(m: TriMesh, field: Float32Array): SplitResult {
     if (!(fu * fv < 0) || Math.abs(fu - fv) < MIN_SPAN) return;
     const key = u < v ? u * numVert + v : v * numVert + u;
     if (edgeVertex.has(key)) return;
-    const t = fu / (fu - fv);
+    let t = param ? param(u, v, fu, fv) : NaN;
+    if (Number.isNaN(t)) t = fu / (fu - fv);
     if (t < MIN_PARAM || t > MAX_PARAM) return;
     edgeVertex.set(key, numVert + added.length / 3);
     for (let k = 0; k < 3; k++) added.push(p[u * 3 + k] + (p[v * 3 + k] - p[u * 3 + k]) * t);

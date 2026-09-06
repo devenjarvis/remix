@@ -35,6 +35,18 @@ function angleDeg(ax: number, ay: number, az: number, bx: number, by: number, bz
   return Math.acos(d > 1 ? 1 : d < -1 ? -1 : d) * RAD_TO_DEG;
 }
 
+const ANGLE_BUCKETS = 18001;
+
+function sortByAngle(angle: Float32Array): Uint32Array {
+  const counts = new Uint32Array(ANGLE_BUCKETS + 1);
+  const bucket = (a: number): number => Math.min(ANGLE_BUCKETS - 1, Math.max(0, Math.round(a * 100)));
+  for (let i = 0; i < angle.length; i++) counts[bucket(angle[i]) + 1]++;
+  for (let b = 0; b < ANGLE_BUCKETS; b++) counts[b + 1] += counts[b];
+  const order = new Uint32Array(angle.length);
+  for (let i = 0; i < angle.length; i++) order[counts[bucket(angle[i])]++] = i;
+  return order;
+}
+
 function segment(m: TriMesh, toleranceDeg: number, adj: Int32Array, normals: Float32Array): Uint32Array {
   const numTri = m.indices.length / 3;
   const areas = triangleAreas(m);
@@ -62,9 +74,7 @@ function segment(m: TriMesh, toleranceDeg: number, adj: Int32Array, normals: Flo
     edgeAngle[e] = angleDeg(normals[t * 3], normals[t * 3 + 1], normals[t * 3 + 2], normals[n * 3], normals[n * 3 + 1], normals[n * 3 + 2]);
     e++;
   }
-  const order = new Uint32Array(numEdges);
-  for (let i = 0; i < numEdges; i++) order[i] = i;
-  order.sort((a, b) => edgeAngle[a] - edgeAngle[b] || a - b);
+  const order = sortByAngle(edgeAngle);
 
   for (let i = 0; i < numEdges; i++) {
     const k = order[i];
