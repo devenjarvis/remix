@@ -1,13 +1,15 @@
 import type { AppState } from '../app';
 import type { FormHandle } from '../panel';
 import type { Axis, CutOp } from '../../core/ops/types';
-import type { Vec3 } from '../../core/types';
+import type { Bounds, Vec3 } from '../../core/types';
 import { newId } from '../../core/ops/types';
 import { axisNormal, offsetRange } from '../../core/ops/cut';
 import { actions, el, fmt, hint, numberInput, row, select } from '../dom';
 
 export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
   let normal: Vec3 = [...axisNormal.z];
+  /** The model without this form's preview, so a one-sided cut does not shrink its own offset range. */
+  let extent: Bounds | null = app.bounds;
   const slider = el('input', { type: 'range', step: 0.01 });
   const offset = numberInput(0, { step: 0.1 });
   const keep = select<CutOp['keep']>([['both', 'Both'], ['below', 'Below'], ['above', 'Above']], 'both');
@@ -62,7 +64,7 @@ export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
   }
 
   function setBounds(resetValue: boolean, at?: number): void {
-    const b = app.bounds;
+    const b = extent;
     apply.disabled = !b;
     slider.disabled = offset.disabled = !b;
     direction.textContent = `Normal [${normal.map(fmt).join(', ')}]`;
@@ -80,9 +82,8 @@ export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
   }
 
   function showPlane(): void {
-    const b = app.bounds;
-    if (!b) return;
-    app.viewport?.showPlane(normal, offset.valueAsNumber, b);
+    if (!extent) return;
+    app.viewport?.showPlane(normal, offset.valueAsNumber, extent);
     app.setPreview(op());
   }
 
@@ -99,7 +100,10 @@ export function buildCutForm(host: HTMLElement, app: AppState): FormHandle {
 
   setBounds(true);
   showPlane();
-  const off = app.onChange(() => setBounds(false));
+  const off = app.onChange(() => {
+    if (!app.preview) extent = app.bounds;
+    setBounds(false);
+  });
   return {
     dispose() {
       off();
