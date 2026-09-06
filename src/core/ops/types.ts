@@ -63,6 +63,21 @@ export type RegionSelection = Exclude<Selection, { kind: 'invert' | 'grow' | 'sh
 
 export const isRegion = (s: Selection): s is RegionSelection => s.kind !== 'invert' && s.kind !== 'grow' && s.kind !== 'shrink' && s.kind !== 'multi';
 
+/** The one part a gesture applies to, or null when it applies to every part. */
+export function gesturePart(sel: Selection): number | null {
+  switch (sel.kind) {
+    case 'fill':
+    case 'brush':
+    case 'segment':
+    case 'lasso':
+      return sel.part;
+    case 'part':
+      return sel.index;
+    default:
+      return null;
+  }
+}
+
 /** `edges` 'smooth' splits boundary triangles along the selection contour; absent replays as 'triangles'. */
 export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection; edges?: 'smooth' | 'triangles' };
 

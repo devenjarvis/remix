@@ -6,7 +6,7 @@ import { segmentMesh, selectSegment } from '../segment';
 import { lassoCrossing, lassoField, lassoInside, lassoVisibility } from '../lasso';
 import { fractionField, planeField, splitByField } from '../sharpen';
 import { registerOp } from './registry';
-import { isRegion, type Op, type PaintOp, type RegionSelection, type Selection } from './types';
+import { gesturePart, isRegion, type Op, type PaintOp, type RegionSelection, type Selection } from './types';
 
 /**
  * Where lasso visibility is judged: `source` maps each triangle of the working mesh to one of
@@ -171,7 +171,7 @@ function paintPart(part: Manifold, sels: Selection[], color: number, smooth: boo
 }
 
 function targetIndex(sel: Selection, count: number): number | null {
-  const i = sel.kind === 'fill' || sel.kind === 'brush' || sel.kind === 'segment' || sel.kind === 'lasso' ? sel.part : sel.kind === 'part' ? sel.index : null;
+  const i = gesturePart(sel);
   if (i !== null && i >= count) throw new Error(`Paint target part ${i + 1} not found`);
   return i;
 }
