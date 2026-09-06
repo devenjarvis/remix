@@ -1,7 +1,7 @@
 import type { Manifold } from 'manifold-3d';
 import type { TriMesh, Vec3 } from '../types';
 import { fromManifold, withPendingPaint } from '../trimesh';
-import { adjacencyOf, growSelection, nearestTriangle, selectBrush, selectFill, selectHeight, shrinkSelection, triangleNormals, vertexTriangles, type FillRule } from '../select';
+import { adjacencyOf, growSelection, nearestTriangle, selectBrush, selectFill, selectHeight, shrinkSelection, triangleNormals, vertexTriangles } from '../select';
 import { segmentMesh, selectSegment } from '../segment';
 import { lassoCrossing, lassoField, lassoInside, lassoVisibility } from '../lasso';
 import { fractionField, planeField, splitByField } from '../sharpen';
@@ -203,10 +203,6 @@ export function consolidatePaints(ops: Op[]): Op[] {
     } else out.push(op);
   }
   return out;
-}
-
-export function paintOpFromHit(hit: { point: Vec3; normal: Vec3; partIndex: number }, color: number, angle: number, id: string, rule: FillRule = 'seed', edges: PaintOp['edges'] = 'smooth'): PaintOp {
-  return { id, type: 'paint', color, edges, select: { kind: 'fill', part: hit.partIndex, point: hit.point, normal: hit.normal, angle, rule } };
 }
 
 /** Keeps the first point and every later point at least `spacing` from the last kept point. */

@@ -4,7 +4,7 @@ import { getManifold, manifold } from '../../src/core/manifold';
 import { parseFont } from '../../src/core/font';
 import { applyOp } from '../../src/core/ops/registry';
 import '../../src/core/ops';
-import { consolidatePaints, paintOpFromHit, resolveSelection, thinStroke } from '../../src/core/ops/paint';
+import { consolidatePaints, resolveSelection, thinStroke } from '../../src/core/ops/paint';
 import { describeOp, type Op, type OpContext, type PaintOp, type Selection } from '../../src/core/ops/types';
 import { validateOp } from '../../src/core/ops/validate';
 import { fromManifold, hasPendingPaint, toManifold, weld } from '../../src/core/trimesh';
@@ -154,12 +154,6 @@ describe('paint op', () => {
   it('describeOp names the slot and mode', () => {
     expect(describeOp(fill(2, [0, 0, 0], [0, 0, 1]))).toBe('Paint slot 2 (fill)');
     expect(describeOp({ id: 'x', type: 'paint', color: 0, select: { kind: 'all' } })).toBe('Paint Base (all)');
-  });
-
-  it('a fill selection built from a FaceHit validates', () => {
-    const op = paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1');
-    expect(validateOp(op)).toEqual(op);
-    expect(op.select.kind).toBe('fill');
   });
 
   it('thinStroke drops points closer than the spacing to the previous kept point', () => {
@@ -378,9 +372,6 @@ describe('smooth edges', () => {
     expect(() => validateOp({ ...fill(1, [5, 5, 10], [0, 0, 1]), edges: 'fuzzy' })).toThrow(/edges/i);
     expect('edges' in validateOp(fill(1, [5, 5, 10], [0, 0, 1]))).toBe(false);
     expect((validateOp({ ...fill(1, [5, 5, 10], [0, 0, 1]), edges: 'triangles' }) as PaintOp).edges).toBe('triangles');
-    const op = paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1');
-    expect(op.edges).toBe('smooth');
-    expect(paintOpFromHit({ point: [1, 2, 3], normal: [0, 0, 1], partIndex: 0 }, 2, 30, 'id1', 'seed', 'triangles').edges).toBe('triangles');
   });
 });
 

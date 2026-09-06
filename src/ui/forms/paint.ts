@@ -203,6 +203,8 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     growBtn.disabled = shrinkBtn.disabled = n === 0;
   }
 
+  let stroke: { part: number; points: Vec3[]; normals: Vec3[]; set: Uint8Array } | null = null;
+
   function addGesture(sel: Selection): void {
     if (!app.canEditGeometry) return;
     live.add(sel, app.parts);
@@ -212,12 +214,14 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
 
   function undoGesture(): void {
     if (live.isEmpty) return;
+    stroke = null;
     live.undo();
     renderSummary();
     highlight();
   }
 
   function clearSelection(): void {
+    stroke = null;
     live.clear();
     renderSummary();
     highlight();
@@ -312,7 +316,6 @@ export function buildPaintForm(host: HTMLElement, app: AppState): FormHandle {
     showHover();
   }
 
-  let stroke: { part: number; points: Vec3[]; normals: Vec3[]; set: Uint8Array } | null = null;
   function onDrag(hit: FaceHit, phase: 'start' | 'move' | 'end'): void {
     if (tool.value !== 'brush' || !app.canEditGeometry) return;
     if (phase === 'start') {
