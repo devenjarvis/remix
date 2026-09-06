@@ -148,6 +148,16 @@ describe('sharpen', () => {
     for (let t = 0; t < source.length; t++) expect(mesh.colors![t]).toBe(m.colors[source[t]]);
   });
 
+  it('a straight contour through existing vertices is kept as is', () => {
+    const m = fromManifold(manifold().Manifold.cube([10, 10, 10]).refineToLength(1));
+    const { mesh } = splitByField(m, planeField(m, 4.3));
+    const selected = selectWhere(mesh, (n, c) => c[2] < 4.3);
+    const field = fractionField(mesh, selected, triangleNormals(mesh), vertexTriangles(mesh));
+    const again = splitByField(mesh, field);
+    expect(again.mesh.indices).toBe(mesh.indices);
+    expect(Array.from(again.inside)).toEqual(Array.from(selected));
+  });
+
   it('a crossing within 2% of a vertex is not split', () => {
     const m: TriMesh = {
       positions: Float32Array.from([0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 2, 0]),
@@ -165,13 +175,13 @@ describe('sharpen', () => {
 
   it('fractionField weights corners by angle so a thin sliver does not pull the contour', () => {
     const m: TriMesh = {
-      positions: Float32Array.from([0, 0, 0, 10, 0, 0, 10, 10, 0, 0, 10, 0, 0.5, 0.25, 0]),
+      positions: Float32Array.from([0, 0, 0, 10, 0, 0, 10, 10, 0, 0, 10, 0, 0.5, 1, 0]),
       indices: Uint32Array.from([0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4]),
     };
     const selected = Uint8Array.from([1, 0, 0, 0]);
     const field = fractionField(m, selected, triangleNormals(m), vertexTriangles(m));
     const at4 = field[2] + 0.5;
-    expect(at4).toBeGreaterThan(0.35);
-    expect(at4).toBeLessThan(0.5);
+    expect(at4).toBeGreaterThan(0.25);
+    expect(at4).toBeLessThan(0.4);
   });
 });

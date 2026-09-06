@@ -1,7 +1,9 @@
 import type { TriMesh } from './types';
-import type { VertexTriangles } from './select';
+import { adjacencyOf, type VertexTriangles } from './select';
 
 const SMOOTH_COS = Math.cos((40 * Math.PI) / 180);
+const SNAP_FRACTION = 0.05;
+const STRAIGHT_COS = Math.cos((30 * Math.PI) / 180);
 const MIN_PARAM = 0.02;
 const MAX_PARAM = 0.98;
 const MIN_SPAN = 1e-6;
@@ -22,14 +24,42 @@ function cornerAngle(p: Float32Array, idx: Uint32Array, t: number, v: number): n
  * Per-corner selected fraction minus 0.5, 3 values per triangle, weighting each incident triangle
  * by its corner angle at the vertex. A corner counts only the incident triangles whose normal lies
  * within 40 degrees of the triangle's own normal, so a boundary on a sharp crease stays on the crease.
+ * A vertex whose fraction is within 0.05 of one half, or where the selection boundary runs through
+ * it with a turn of at most 30 degrees, gets exactly 0, so a contour that already lies on mesh
+ * edges is kept rather than shifted by a sliver.
  */
-export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32Array, vt: VertexTriangles): Float32Array {
+export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32Array, vt: VertexTriangles, adj = adjacencyOf(m)): Float32Array {
   const idx = m.indices, p = m.positions;
+  const numVert = vt.offsets.length - 1;
+  const onContour = new Uint8Array(numVert);
+  const ends = [0, 0];
+  for (let v = 0; v < numVert; v++) {
+    let count = 0, crease = false;
+    for (let j = vt.offsets[v]; j < vt.offsets[v + 1] && !crease; j++) {
+      const n = vt.incident[j];
+      let k = 0;
+      while (k < 2 && idx[n * 3 + k] !== v) k++;
+      const e = k, other = idx[n * 3 + ((k + 1) % 3)];
+      const across = adj[n * 3 + e];
+      if (across < 0 || selected[n] === selected[across]) continue;
+      const dot = normals[n * 3] * normals[across * 3] + normals[n * 3 + 1] * normals[across * 3 + 1] + normals[n * 3 + 2] * normals[across * 3 + 2];
+      if (dot < SMOOTH_COS) crease = true;
+      else if (count < 2) ends[count++] = other;
+      else count++;
+    }
+    if (crease || count !== 2) continue;
+    const a = ends[0] * 3, b = ends[1] * 3, c = v * 3;
+    const ux = p[c] - p[a], uy = p[c + 1] - p[a + 1], uz = p[c + 2] - p[a + 2];
+    const wx = p[b] - p[c], wy = p[b + 1] - p[c + 1], wz = p[b + 2] - p[c + 2];
+    const len = Math.hypot(ux, uy, uz) * Math.hypot(wx, wy, wz);
+    if (len > 0 && (ux * wx + uy * wy + uz * wz) / len >= STRAIGHT_COS) onContour[v] = 1;
+  }
   const out = new Float32Array(idx.length);
   for (let t = 0; t < idx.length / 3; t++) {
     const nx = normals[t * 3], ny = normals[t * 3 + 1], nz = normals[t * 3 + 2];
     for (let k = 0; k < 3; k++) {
       const v = idx[t * 3 + k];
+      if (onContour[v]) continue;
       let total = 0, picked = 0;
       for (let j = vt.offsets[v]; j < vt.offsets[v + 1]; j++) {
         const n = vt.incident[j];
@@ -38,7 +68,8 @@ export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32
         total += w;
         if (selected[n]) picked += w;
       }
-      out[t * 3 + k] = total > 0 ? picked / total - 0.5 : selected[t] ? 0.5 : -0.5;
+      const f = total > 0 ? picked / total - 0.5 : selected[t] ? 0.5 : -0.5;
+      out[t * 3 + k] = Math.abs(f) < SNAP_FRACTION ? 0 : f;
     }
   }
   return out;
