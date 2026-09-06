@@ -81,6 +81,8 @@ describe('AppState palette', () => {
       highlightTriangles() {},
       onHover: () => () => {},
       onDrag: () => () => {},
+      onSketch: () => () => {},
+      sketchToWorld: () => ({ eye: [0, 0, 0], polygon: [] }),
     };
     app.setPalette([{ name: 'Base', hex: '#111111' }, { name: 'One', hex: '#ff0000' }]);
     expect(changes).toBe(1);

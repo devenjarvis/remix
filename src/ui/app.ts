@@ -28,6 +28,13 @@ export interface ViewportLike {
   onHover(cb: (hit: FaceHit | null) => void): () => void;
   /** Fires while dragging over the model with orbit disabled. Only while pick mode is on and a listener exists. */
   onDrag(cb: (hit: FaceHit, phase: 'start' | 'move' | 'end') => void): () => void;
+  /**
+   * Fires while drawing a closed outline anywhere on the canvas with orbit disabled, with the points
+   * so far in NDC. Only while pick mode is on, a listener exists, and no drag listener is registered.
+   */
+  onSketch(cb: (points: [number, number][], phase: 'start' | 'move' | 'end') => void): () => void;
+  /** The camera position and the NDC points unprojected onto a plane in front of the camera. */
+  sketchToWorld(points: [number, number][]): { eye: Vec3; polygon: Vec3[] };
 }
 
 type Listener = () => void;

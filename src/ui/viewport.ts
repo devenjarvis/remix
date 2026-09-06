@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import type { Axis } from '../core/ops/types';
-import type { Bounds, TriMesh } from '../core/types';
+import type { Bounds, TriMesh, Vec3 } from '../core/types';
 import type { FaceHit, ViewportLike } from './app';
 import { pickFace } from './pick';
 
@@ -16,8 +16,12 @@ const PALETTE = [0xb8c4d6, 0xe6a86b, 0x8fcf8a, 0xd98ad6, 0x7fc8d8, 0xe0d072];
 const AXIS_INDEX: Record<Axis, 0 | 1 | 2> = { x: 0, y: 1, z: 2 };
 const HIGHLIGHT = 0.5;
 const HIGHLIGHT_TINT = new THREE.Color(0x5aa9ff);
+const SKETCH_SPACING_PX = 3;
+const SKETCH_DEPTH = 0.5;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 type DragPhase = 'start' | 'move' | 'end';
+type SketchListener = (points: [number, number][], phase: DragPhase) => void;
 
 type Part = {
   mesh: THREE.Mesh;
@@ -44,8 +48,12 @@ export class Viewport implements ViewportLike {
   private pickListeners = new Set<(hit: FaceHit) => void>();
   private hoverListeners = new Set<(hit: FaceHit | null) => void>();
   private dragListeners = new Set<(hit: FaceHit, phase: DragPhase) => void>();
+  private sketchListeners = new Set<SketchListener>();
   private pointerDown: { x: number; y: number } | null = null;
   private drag: { last: FaceHit } | null = null;
+  private sketch: { ndc: [number, number][]; px: [number, number][] } | null = null;
+  private readonly overlay: SVGSVGElement;
+  private readonly outline: SVGPolylineElement;
   private hoverQueued = false;
   private hoverEvent: PointerEvent | null = null;
   private hovering = false;
@@ -59,6 +67,12 @@ export class Viewport implements ViewportLike {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.domElement = this.renderer.domElement;
     container.appendChild(this.domElement);
+    this.overlay = document.createElementNS(SVG_NS, 'svg');
+    this.overlay.classList.add('sketch');
+    this.outline = document.createElementNS(SVG_NS, 'polyline');
+    this.overlay.append(this.outline);
+    this.overlay.style.display = 'none';
+    container.appendChild(this.overlay);
 
     this.scene.background = new THREE.Color(BG);
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
@@ -284,6 +298,45 @@ export class Viewport implements ViewportLike {
     return () => this.dragListeners.delete(cb);
   }
 
+  onSketch(cb: SketchListener): () => void {
+    this.sketchListeners.add(cb);
+    return () => this.sketchListeners.delete(cb);
+  }
+
+  sketchToWorld(points: [number, number][]): { eye: Vec3; polygon: Vec3[] } {
+    const eye: Vec3 = [this.camera.position.x, this.camera.position.y, this.camera.position.z];
+    const v = new THREE.Vector3();
+    const polygon = points.map(([x, y]): Vec3 => {
+      v.set(x, y, SKETCH_DEPTH).unproject(this.camera);
+      return [v.x, v.y, v.z];
+    });
+    return { eye, polygon };
+  }
+
+  private ndcOf(e: PointerEvent): { ndc: [number, number]; px: [number, number] } {
+    const rect = this.domElement.getBoundingClientRect();
+    const px: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
+    return { px, ndc: [(px[0] / rect.width) * 2 - 1, -(px[1] / rect.height) * 2 + 1] };
+  }
+
+  private drawSketch(): void {
+    if (!this.sketch) return;
+    const rect = this.domElement.getBoundingClientRect();
+    this.overlay.setAttribute('viewBox', `0 0 ${rect.width} ${rect.height}`);
+    this.outline.setAttribute('points', this.sketch.px.map(([x, y]) => `${x},${y}`).join(' '));
+  }
+
+  private addSketchPoint(e: PointerEvent): boolean {
+    if (!this.sketch) return false;
+    const { ndc, px } = this.ndcOf(e);
+    const last = this.sketch.px[this.sketch.px.length - 1];
+    if (last && Math.hypot(px[0] - last[0], px[1] - last[1]) < SKETCH_SPACING_PX) return false;
+    this.sketch.ndc.push(ndc);
+    this.sketch.px.push(px);
+    this.drawSketch();
+    return true;
+  }
+
   setPickMode(on: boolean): void {
     this.pickMode = on;
     this.container.style.cursor = on ? 'crosshair' : '';
@@ -309,17 +362,32 @@ export class Viewport implements ViewportLike {
 
   private onPointerDown = (e: PointerEvent): void => {
     this.pointerDown = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-    if (e.button !== 0 || !this.pickMode || !this.dragListeners.size) return;
-    const hit = this.hitAt(e);
-    if (!hit) return;
-    this.drag = { last: hit };
+    if (e.button !== 0 || !this.pickMode) return;
+    if (this.dragListeners.size) {
+      const hit = this.hitAt(e);
+      if (!hit) return;
+      this.drag = { last: hit };
+      this.controls.enabled = false;
+      this.domElement.setPointerCapture(e.pointerId);
+      for (const cb of this.dragListeners) cb(hit, 'start');
+      return;
+    }
+    if (!this.sketchListeners.size) return;
+    this.sketch = { ndc: [], px: [] };
+    this.addSketchPoint(e);
+    this.overlay.style.display = '';
     this.controls.enabled = false;
     this.domElement.setPointerCapture(e.pointerId);
-    for (const cb of this.dragListeners) cb(hit, 'start');
+    this.emitHover(null);
+    for (const cb of this.sketchListeners) cb(this.sketch.ndc, 'start');
   };
 
   private onPointerMove = (e: PointerEvent): void => {
     if (!this.pickMode) return;
+    if (this.sketch) {
+      if (this.addSketchPoint(e)) for (const cb of this.sketchListeners) cb(this.sketch.ndc, 'move');
+      return;
+    }
     if (this.drag) {
       const hit = this.hitAt(e);
       if (!hit) return;
@@ -345,6 +413,17 @@ export class Viewport implements ViewportLike {
   private onPointerUp = (e: PointerEvent): void => {
     const down = this.pointerDown;
     this.pointerDown = null;
+    if (this.sketch) {
+      this.addSketchPoint(e);
+      const { ndc } = this.sketch;
+      this.sketch = null;
+      this.overlay.style.display = 'none';
+      this.outline.removeAttribute('points');
+      this.controls.enabled = true;
+      if (this.domElement.hasPointerCapture(e.pointerId)) this.domElement.releasePointerCapture(e.pointerId);
+      for (const cb of this.sketchListeners) cb(ndc, 'end');
+      return;
+    }
     if (this.drag) {
       const { last } = this.drag;
       this.drag = null;
@@ -370,5 +449,6 @@ export class Viewport implements ViewportLike {
     this.controls.dispose();
     this.renderer.dispose();
     this.domElement.remove();
+    this.overlay.remove();
   }
 }
