@@ -34,6 +34,13 @@ export function select<T extends string>(options: [T, string][], value: T): HTML
   return s;
 }
 
+/** Slot selector built from the app palette; option values are slot indices. */
+export function colorSelect(app: { palette: { name: string; hex: string }[] }, value: number): HTMLSelectElement {
+  const s = el('select', {}, app.palette.map((p, i) => el('option', { value: String(i) }, [i === 0 ? 'Base' : `${i}: ${p.name}`])));
+  s.value = String(Math.min(value, app.palette.length - 1));
+  return s;
+}
+
 export function hint(text = ''): HTMLDivElement {
   return el('div', { class: 'hint' }, [text]);
 }

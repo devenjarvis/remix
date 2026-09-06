@@ -60,3 +60,38 @@ describe('AppState preview', () => {
     expect(app.bounds?.size).toEqual([20, 20, 20]);
   });
 });
+
+describe('AppState palette', () => {
+  it('setPalette emits change and leaves history length unchanged', async () => {
+    const app = new AppState(new History(), new Engine());
+    app.setSource(unweldedCube(10), 'cube.stl');
+    app.history.push({ id: 'p', type: 'paint', color: 1, select: { kind: 'all' } });
+    let changes = 0;
+    app.onChange(() => changes++);
+    const hexes: string[][] = [];
+    app.viewport = {
+      setParts() {},
+      showPlane() {},
+      hidePlane() {},
+      onFacePick: () => () => {},
+      setPickMode() {},
+      fitCamera() {},
+      setPalette: (h) => hexes.push(h),
+      setTriangleColors() {},
+      highlightTriangles() {},
+      onHover: () => () => {},
+      onDrag: () => () => {},
+      onSketch: () => () => {},
+      sketchToWorld: () => ({ eye: [0, 0, 0], polygon: [] }),
+    };
+    app.setPalette([{ name: 'Base', hex: '#111111' }, { name: 'One', hex: '#ff0000' }]);
+    expect(changes).toBe(1);
+    expect(app.history.ops.length).toBe(1);
+    expect(app.palette[1].hex).toBe('#ff0000');
+    expect(hexes).toEqual([['#111111', '#ff0000']]);
+    app.setSource(unweldedCube(10), 'cube.stl');
+    expect(app.palette.length).toBe(5);
+    app.setSource(unweldedCube(10), 'cube.3mf', [{ name: 'Base', hex: '#000000' }]);
+    expect(app.palette).toEqual([{ name: 'Base', hex: '#000000' }]);
+  });
+});

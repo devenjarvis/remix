@@ -5,8 +5,9 @@ import type { Bounds, TriMesh, Vec3 } from '../core/types';
 import { bounds, mergeMeshes, placeOnBed } from '../core/trimesh';
 import { repairSmallDefects, type RepairReport } from '../core/repair';
 import { validateOp } from '../core/ops/validate';
+import { defaultPalette, type PaletteSlot } from '../core/color';
 
-export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number };
+export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number; triangle: number };
 
 /** Implemented by src/ui/viewport.ts. Kept as an interface so forms do not import three. */
 export interface ViewportLike {
@@ -17,6 +18,23 @@ export interface ViewportLike {
   onFacePick(cb: (hit: FaceHit) => void): () => void;
   setPickMode(on: boolean): void;
   fitCamera(): void;
+  /** Hex per slot, Base first; recolors painted triangles in place. */
+  setPalette(hexes: string[]): void;
+  /** Overrides one part's slots without rebuilding geometry; null restores the part's own slots. */
+  setTriangleColors(part: number, colors: Uint8Array | null): void;
+  /** Tints the given triangles toward the accent color; null clears the highlight. */
+  highlightTriangles(part: number, tris: Uint32Array | null): void;
+  /** Fires with the face under the pointer, or null when it leaves the model. Only while pick mode is on. */
+  onHover(cb: (hit: FaceHit | null) => void): () => void;
+  /** Fires while dragging over the model with orbit disabled. Only while pick mode is on and a listener exists. */
+  onDrag(cb: (hit: FaceHit, phase: 'start' | 'move' | 'end') => void): () => void;
+  /**
+   * Fires while drawing a closed outline anywhere on the canvas with orbit disabled, with the points
+   * so far in NDC. Only while pick mode is on, a listener exists, and no drag listener is registered.
+   */
+  onSketch(cb: (points: [number, number][], phase: 'start' | 'move' | 'end') => void): () => void;
+  /** The camera position and the NDC points unprojected onto a plane in front of the camera. */
+  sketchToWorld(points: [number, number][]): { eye: Vec3; polygon: Vec3[] };
 }
 
 type Listener = () => void;
@@ -24,6 +42,8 @@ type Listener = () => void;
 export class AppState {
   source: TriMesh | null = null;
   sourceName = 'model';
+  /** Base plus up to 16 filament slots; index matches TriMesh.colors values. */
+  palette: PaletteSlot[] = defaultPalette();
   result: Result | null = null;
   repair: RepairReport | null = null;
   /** An uncommitted op evaluated on top of the active history, shown until cleared or applied. */
@@ -64,7 +84,8 @@ export class AppState {
     return this.source !== null && this.engine.sourceManifold;
   }
 
-  setSource(m: TriMesh, name: string): void {
+  setSource(m: TriMesh, name: string, palette?: PaletteSlot[]): void {
+    this.palette = palette ?? defaultPalette();
     let mesh = placeOnBed(m);
     this.repair = null;
     this.engine.setSource(mesh);
@@ -83,6 +104,13 @@ export class AppState {
     this.source = mesh;
     this.sourceName = name;
     this.history.clear();
+  }
+
+  /** Recolors the viewport at once and adds nothing to history. */
+  setPalette(p: PaletteSlot[]): void {
+    this.palette = p;
+    this.viewport?.setPalette(p.map((s) => s.hex));
+    this.emit();
   }
 
   pushOp(op: Op): void {
@@ -153,6 +181,7 @@ export class AppState {
     } finally {
       this.busy = false;
     }
+    this.viewport?.setPalette(this.palette.map((s) => s.hex));
     this.viewport?.setParts(this.result.parts);
     this.emit();
   }

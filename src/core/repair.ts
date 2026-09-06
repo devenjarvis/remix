@@ -16,6 +16,7 @@ function edgeKey(u: number, v: number): number {
 export function repairSmallDefects(m: TriMesh): { mesh: TriMesh; report: RepairReport } {
   const idx = m.indices;
   const kept: number[] = [];
+  const colors: number[] | null = m.colors ? [] : null;
   const directed = new Set<number>();
   const seenTri = new Set<string>();
   let removed = 0;
@@ -38,6 +39,7 @@ export function repairSmallDefects(m: TriMesh): { mesh: TriMesh; report: RepairR
     seenTri.add(key);
     for (const k of e) directed.add(k);
     kept.push(a, b, c);
+    colors?.push(m.colors![t / 3]);
   }
 
   const next = new Map<number, number>();
@@ -62,13 +64,18 @@ export function repairSmallDefects(m: TriMesh): { mesh: TriMesh; report: RepairR
       v = next.get(v);
     }
     if (v !== start || loop.length < 3 || loop.length > MAX_HOLE_EDGES) continue;
-    for (let i = 1; i < loop.length - 1; i++) kept.push(loop[0], loop[i], loop[i + 1]);
+    for (let i = 1; i < loop.length - 1; i++) {
+      kept.push(loop[0], loop[i], loop[i + 1]);
+      colors?.push(0);
+    }
     holes++;
     filled += loop.length - 2;
   }
 
+  const mesh: TriMesh = { positions: m.positions, indices: Uint32Array.from(kept) };
+  if (colors) mesh.colors = Uint8Array.from(colors);
   return {
-    mesh: { positions: m.positions, indices: Uint32Array.from(kept) },
+    mesh,
     report: { removedTriangles: removed, filledHoles: holes, filledTriangles: filled },
   };
 }

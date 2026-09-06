@@ -60,12 +60,21 @@ function obj(): string {
   return lines.join('\n');
 }
 
-function threeMf(unit: string): Uint8Array {
+type ThreeMfOptions = {
+  materials?: string;
+  objectAttrs?: string;
+  triangleAttrs?: Record<number, string>;
+};
+
+function threeMf(unit: string, opts: ThreeMfOptions = {}): Uint8Array {
   const vs = verts.map((v) => `<vertex x="${v[0]}" y="${v[1]}" z="${v[2]}"/>`).join('');
-  const ts = faces.map((f) => `<triangle v1="${f[0]}" v2="${f[1]}" v3="${f[2]}"/>`).join('');
+  const ts = faces
+    .map((f, i) => `<triangle v1="${f[0]}" v2="${f[1]}" v3="${f[2]}"${opts.triangleAttrs?.[i] ?? ''}/>`)
+    .join('');
+  const ns = opts.materials ? ' xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02"' : '';
   const model = `<?xml version="1.0" encoding="UTF-8"?>
-<model unit="${unit}" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
-<resources><object id="1" type="model"><mesh><vertices>${vs}</vertices><triangles>${ts}</triangles></mesh></object></resources>
+<model unit="${unit}" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"${ns}>
+<resources>${opts.materials ?? ''}<object id="1" type="model"${opts.objectAttrs ?? ''}><mesh><vertices>${vs}</vertices><triangles>${ts}</triangles></mesh></object></resources>
 <build><item objectid="1"/></build>
 </model>`;
   const contentTypes = `<?xml version="1.0" encoding="UTF-8"?>
@@ -89,3 +98,24 @@ writeFileSync(join(dir, 'cube-ascii.stl'), asciiStl());
 writeFileSync(join(dir, 'cube.obj'), obj());
 writeFileSync(join(dir, 'cube.3mf'), threeMf('millimeter'));
 writeFileSync(join(dir, 'cube-inch.3mf'), threeMf('inch'));
+writeFileSync(
+  join(dir, 'cube-colors.3mf'),
+  threeMf('millimeter', {
+    materials: '<m:colorgroup id="1"><m:color color="#ff0000"/><m:color color="#0000ff"/></m:colorgroup>',
+    triangleAttrs: { 0: ' pid="1" p1="1"', 1: ' pid="1" p1="1"', 2: ' pid="1" p1="0"', 3: ' pid="1" p1="0"' },
+  }),
+);
+writeFileSync(
+  join(dir, 'cube-basematerials.3mf'),
+  threeMf('millimeter', {
+    materials: '<basematerials id="1"><base name="Red" displaycolor="#FF0000FF"/><base name="Blue" displaycolor="#0000FFFF"/></basematerials>',
+    objectAttrs: ' pid="1" pindex="0"',
+    triangleAttrs: { 0: ' p1="1"', 1: ' p1="1"' },
+  }),
+);
+writeFileSync(
+  join(dir, 'cube-paint.3mf'),
+  threeMf('millimeter', {
+    triangleAttrs: { 0: ' paint_color="4"', 1: ' paint_color="4"', 2: ' paint_color="8"', 3: ' paint_color="8"' },
+  }),
+);

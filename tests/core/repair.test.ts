@@ -51,3 +51,24 @@ describe('placeOnBed', () => {
     expect(b.max).toEqual([5, 5, 10]);
   });
 });
+
+describe('repairSmallDefects colors', () => {
+  it('drops colors of removed triangles and gives filled triangles slot 0', () => {
+    const cube = weld(unweldedCube(10));
+    const idx = Array.from(cube.indices);
+    idx.splice(0, 3);
+    idx.push(idx[3], idx[5], idx[4]);
+    const colors = new Uint8Array(12);
+    for (let i = 0; i < 11; i++) colors[i] = i + 1;
+    colors[11] = 7;
+    const { mesh, report } = repairSmallDefects({ positions: cube.positions, indices: Uint32Array.from(idx), colors });
+    expect(report.removedTriangles).toBe(1);
+    expect(report.filledTriangles).toBe(1);
+    expect(Array.from(mesh.colors!)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0]);
+  });
+
+  it('returns no colors when the input has none', () => {
+    const { mesh } = repairSmallDefects(weld(unweldedCube(10)));
+    expect(mesh.colors).toBeUndefined();
+  });
+});

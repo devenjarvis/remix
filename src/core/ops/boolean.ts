@@ -11,7 +11,7 @@ function overlaps(a: Manifold, b: Manifold): boolean {
 }
 
 registerOp<BooleanOp>('boolean', (input, op) => {
-  const tool = toolManifold(op.tool, op.matrix);
+  const tool = toolManifold(op.tool, op.matrix, op.color ?? 0);
   if (!input.length) return op.mode === 'union' ? [tool] : (tool.delete(), []);
   try {
     if (op.mode === 'union') {

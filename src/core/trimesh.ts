@@ -1,6 +1,7 @@
 import type { Manifold } from 'manifold-3d';
 import { manifold } from './manifold';
 import type { Bounds, TriMesh, Vec3 } from './types';
+import { MAX_SLOTS } from './color';
 
 export function weld(m: TriMesh, tol = 1e-5): TriMesh {
   const inv = 1 / tol;
@@ -21,17 +22,21 @@ export function weld(m: TriMesh, tol = 1e-5): TriMesh {
     remap[i] = idx;
   }
   const indices = new Uint32Array(m.indices.length);
+  const colors = m.colors ? new Uint8Array(m.colors.length) : null;
   let n = 0;
   for (let t = 0; t < m.indices.length; t += 3) {
     const a = remap[m.indices[t]];
     const b = remap[m.indices[t + 1]];
     const c = remap[m.indices[t + 2]];
     if (a === b || b === c || a === c) continue;
+    if (colors) colors[n / 3] = m.colors![t / 3];
     indices[n++] = a;
     indices[n++] = b;
     indices[n++] = c;
   }
-  return { positions: new Float32Array(out), indices: indices.slice(0, n) };
+  const result: TriMesh = { positions: new Float32Array(out), indices: indices.slice(0, n) };
+  if (colors) result.colors = colors.slice(0, n / 3);
+  return result;
 }
 
 export function bounds(m: TriMesh): Bounds {
@@ -49,15 +54,128 @@ export function bounds(m: TriMesh): Bounds {
   return { min, max, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
 }
 
-export function toManifold(m: TriMesh): Manifold {
+let reserved: { base: number; count: number } | null = null;
+
+/** Reserves one manifold originalID per color slot (Base plus MAX_SLOTS) on first use; needs getManifold() resolved. */
+export function slotIds(): { base: number; count: number } {
+  if (!reserved) {
+    const count = MAX_SLOTS + 1;
+    reserved = { base: manifold().Manifold.reserveIDs(count), count };
+  }
+  return reserved;
+}
+
+function slotOfId(id: number): number {
+  const { base, count } = slotIds();
+  return id >= base && id < base + count ? id - base : 0;
+}
+
+/** Builds a Manifold from an already welded mesh, tagging color runs with reserved IDs. */
+function manifoldFromWelded(w: TriMesh): Manifold {
   const { Mesh, Manifold } = manifold();
-  const w = weld(m);
-  const mesh = new Mesh({ numProp: 3, vertProperties: w.positions, triVerts: w.indices });
+  const painted = w.colors && w.colors.some((c) => c !== 0);
+  if (!painted) {
+    const mesh = new Mesh({ numProp: 3, vertProperties: w.positions, triVerts: w.indices });
+    mesh.merge();
+    return new Manifold(mesh);
+  }
+  const colors = w.colors!;
+  const numTri = colors.length;
+  const triVerts = new Uint32Array(numTri * 3);
+  const runIndex: number[] = [];
+  const runOriginalID: number[] = [];
+  const { base } = slotIds();
+  let n = 0;
+  for (let slot = 0; slot <= MAX_SLOTS; slot++) {
+    const start = n;
+    for (let t = 0; t < numTri; t++) {
+      if (colors[t] !== slot) continue;
+      triVerts.set(w.indices.subarray(t * 3, t * 3 + 3), n * 3);
+      n++;
+    }
+    if (n === start) continue;
+    runIndex.push(start * 3);
+    runOriginalID.push(base + slot);
+  }
+  runIndex.push(numTri * 3);
+  const mesh = new Mesh({
+    numProp: 3,
+    vertProperties: w.positions,
+    triVerts,
+    runIndex: Uint32Array.from(runIndex),
+    runOriginalID: Uint32Array.from(runOriginalID),
+  });
   mesh.merge();
   return new Manifold(mesh);
 }
 
+export function toManifold(m: TriMesh): Manifold {
+  return manifoldFromWelded(weld(m));
+}
+
+type PendingPaint = { positions: Float32Array; indices: Uint32Array; colors: Uint8Array };
+const pendingPaint = new WeakMap<Manifold, PendingPaint>();
+const meshCache = new WeakMap<Manifold, TriMesh>();
+
+/**
+ * Returns a handle to the same geometry with `colors` attached but not yet
+ * baked into run IDs. Painting stays cheap until a geometry op needs the
+ * colors in the manifold, at which point bakePaint builds them in.
+ * `geometry` replaces the handle's own mesh when the colors index different triangles.
+ */
+export function withPendingPaint(
+  m: Manifold,
+  colors: Uint8Array,
+  geometry?: { positions: Float32Array; indices: Uint32Array },
+): Manifold {
+  const base = geometry ?? fromManifold(m);
+  const handle = m.translate([0, 0, 0]);
+  pendingPaint.set(handle, { positions: base.positions, indices: base.indices, colors });
+  return handle;
+}
+
+export function hasPendingPaint(m: Manifold): boolean {
+  return pendingPaint.has(m);
+}
+
+/** Bakes pending colors into a new Manifold the caller owns; returns `m` itself when nothing is pending. */
+export function bakePaint(m: Manifold): Manifold {
+  const p = pendingPaint.get(m);
+  if (!p) return m;
+  return manifoldFromWelded({ positions: p.positions, indices: p.indices, colors: p.colors });
+}
+
+/** Rebuilds the manifold with every triangle tagged as `slot`; slot 0 leaves it untagged. */
+export function withSlot(m: Manifold, slot: number): Manifold {
+  const { Mesh, Manifold } = manifold();
+  const mesh = m.getMesh();
+  if (slot <= 0) return new Manifold(mesh);
+  const tagged = new Mesh({
+    numProp: mesh.numProp,
+    vertProperties: mesh.vertProperties,
+    triVerts: mesh.triVerts,
+    runIndex: Uint32Array.from([0, mesh.triVerts.length]),
+    runOriginalID: Uint32Array.from([slotIds().base + slot]),
+  });
+  return new Manifold(tagged);
+}
+
+/** Reads the mesh once per Manifold; results are shared, so callers must not mutate the arrays. */
 export function fromManifold(m: Manifold): TriMesh {
+  const p = pendingPaint.get(m);
+  if (p) {
+    const out: TriMesh = { positions: p.positions, indices: p.indices };
+    if (p.colors.some((c) => c !== 0)) out.colors = p.colors;
+    return out;
+  }
+  const cached = meshCache.get(m);
+  if (cached) return cached;
+  const out = readManifold(m);
+  meshCache.set(m, out);
+  return out;
+}
+
+function readManifold(m: Manifold): TriMesh {
   const mesh = m.getMesh();
   const positions = new Float32Array(mesh.vertProperties.length / mesh.numProp * 3);
   for (let i = 0; i < positions.length / 3; i++) {
@@ -65,7 +183,24 @@ export function fromManifold(m: Manifold): TriMesh {
     positions[i * 3 + 1] = mesh.vertProperties[i * mesh.numProp + 1];
     positions[i * 3 + 2] = mesh.vertProperties[i * mesh.numProp + 2];
   }
-  return { positions, indices: new Uint32Array(mesh.triVerts) };
+  const out: TriMesh = { positions, indices: new Uint32Array(mesh.triVerts) };
+  const numTri = mesh.triVerts.length / 3;
+  const runs = mesh.runOriginalID;
+  if (runs && runs.length && reserved) {
+    const colors = new Uint8Array(numTri);
+    let painted = false;
+    for (let r = 0; r < runs.length; r++) {
+      const slot = slotOfId(runs[r]);
+      if (!slot) continue;
+      const start = mesh.runIndex[r] / 3;
+      const end = (r + 1 < mesh.runIndex.length ? mesh.runIndex[r + 1] : mesh.triVerts.length) / 3;
+      if (end <= start) continue;
+      colors.fill(slot, start, end);
+      painted = true;
+    }
+    if (painted) out.colors = colors;
+  }
+  return out;
 }
 
 export function isManifold(m: TriMesh): { ok: boolean; status: string } {
@@ -94,16 +229,20 @@ export function mergeMeshes(meshes: TriMesh[]): TriMesh {
   }
   const positions = new Float32Array(nv);
   const indices = new Uint32Array(ni);
+  const colors = meshes.some((m) => m.colors) ? new Uint8Array(ni / 3) : null;
   let ov = 0;
   let oi = 0;
   for (const m of meshes) {
     positions.set(m.positions, ov);
     const base = ov / 3;
     for (let i = 0; i < m.indices.length; i++) indices[oi + i] = m.indices[i] + base;
+    if (colors && m.colors) colors.set(m.colors, oi / 3);
     ov += m.positions.length;
     oi += m.indices.length;
   }
-  return { positions, indices };
+  const result: TriMesh = { positions, indices };
+  if (colors) result.colors = colors;
+  return result;
 }
 
 export function validateMesh(m: TriMesh): TriMesh {
@@ -116,6 +255,12 @@ export function validateMesh(m: TriMesh): TriMesh {
   const nv = m.positions.length / 3;
   for (let i = 0; i < m.indices.length; i++) {
     if (m.indices[i] >= nv) throw new Error(`Triangle index ${m.indices[i]} exceeds vertex count ${nv}`);
+  }
+  if (m.colors) {
+    if (m.colors.length !== m.indices.length / 3) throw new Error('Colors array must have one entry per triangle');
+    for (let i = 0; i < m.colors.length; i++) {
+      if (m.colors[i] > MAX_SLOTS) throw new Error(`Color slot ${m.colors[i]} at triangle ${i} exceeds ${MAX_SLOTS}`);
+    }
   }
   return m;
 }
@@ -133,5 +278,5 @@ export function placeOnBed(m: TriMesh): TriMesh {
     positions[i + 1] = m.positions[i + 1] - dy;
     positions[i + 2] = m.positions[i + 2] - dz;
   }
-  return { positions, indices: m.indices };
+  return { ...m, positions };
 }

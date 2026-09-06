@@ -87,11 +87,16 @@ main {
 
 #panel section { padding: 10px; border-bottom: 1px solid var(--border); }
 #panel h2 { font-size: 12px; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; letter-spacing: 0.05em; }
+#panel .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+#panel .section-head h2 { margin: 0; }
+#panel .section-head button { font-size: 11px; padding: 2px 6px; }
+#op-form .stack { display: flex; flex-direction: column; gap: 6px; }
 
 #op-buttons { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 
 #op-form { display: flex; flex-direction: column; gap: 6px; }
 #op-form .row { display: flex; align-items: center; gap: 6px; }
+#op-form [hidden] { display: none !important; }
 #op-form label { color: var(--muted); min-width: 70px; }
 #op-form input[type="number"], #op-form input[type="text"], #op-form select {
   background: var(--bg);
@@ -106,6 +111,10 @@ main {
 #op-form .hint { color: var(--muted); font-size: 12px; }
 #op-form .actions { display: flex; gap: 6px; margin-top: 4px; }
 #op-form .parts { display: flex; flex-direction: column; gap: 4px; }
+#op-form .swatches { display: flex; flex-wrap: wrap; gap: 4px; }
+#op-form .swatch { display: flex; align-items: center; gap: 4px; padding: 2px 6px; }
+#op-form .swatch .chip { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.25); }
+#op-form input[type="color"] { width: 40px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
 
 #history-list { list-style: none; margin: 0; padding: 0; }
 #history-list li {
@@ -126,6 +135,8 @@ main {
 
 #viewport { position: relative; min-width: 0; min-height: 0; }
 #viewport canvas { display: block; width: 100%; height: 100%; }
+#viewport svg.sketch { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#viewport svg.sketch polyline { fill: rgba(90, 169, 255, 0.15); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
 #viewport.dragover { outline: 2px dashed var(--accent); outline-offset: -6px; }
 #drop-hint {
   position: absolute;

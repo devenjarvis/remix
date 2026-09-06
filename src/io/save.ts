@@ -1,6 +1,7 @@
 import { BufferAttribute, BufferGeometry, Mesh } from 'three';
 import { OBJExporter } from 'three/examples/jsm/exporters/OBJExporter.js';
 import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+import { hasPaint, type PaletteSlot } from '../core/color';
 import type { TriMesh } from '../core/types';
 import { mergeMeshes } from '../core/trimesh';
 import { write3mf } from './threemf-writer';
@@ -14,19 +15,26 @@ function toThreeMesh(m: TriMesh): Mesh {
   return new Mesh(g);
 }
 
-export function exportModel(parts: TriMesh | TriMesh[], format: ExportFormat, name: string): Uint8Array {
+/** Serializes parts; `droppedColors` is true when the format cannot carry the mesh's paint. */
+export function exportModel(
+  parts: TriMesh | TriMesh[],
+  format: ExportFormat,
+  name: string,
+  palette?: PaletteSlot[],
+): { bytes: Uint8Array; droppedColors: boolean } {
   const list = Array.isArray(parts) ? parts : [parts];
+  const painted = list.some(hasPaint);
   switch (format) {
     case 'stl': {
       const merged = mergeMeshes(list);
       const out = new STLExporter().parse(toThreeMesh(merged), { binary: true });
-      return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
+      return { bytes: new Uint8Array(out.buffer, out.byteOffset, out.byteLength), droppedColors: painted };
     }
     case 'obj': {
       const merged = mergeMeshes(list);
-      return new TextEncoder().encode(new OBJExporter().parse(toThreeMesh(merged)));
+      return { bytes: new TextEncoder().encode(new OBJExporter().parse(toThreeMesh(merged))), droppedColors: painted };
     }
     case '3mf':
-      return write3mf(list, name);
+      return { bytes: write3mf(list, name, palette), droppedColors: false };
   }
 }

@@ -1,5 +1,5 @@
 import type { AppState } from './app';
-import { describeOp } from '../core/ops/types';
+import { describeOp, describeSelection, type Op } from '../core/ops/types';
 import { el } from './dom';
 
 export class HistoryPanel {
@@ -8,9 +8,11 @@ export class HistoryPanel {
     private readonly list: HTMLElement,
     private readonly undoBtn: HTMLButtonElement,
     private readonly redoBtn: HTMLButtonElement,
+    private readonly mergeBtn: HTMLButtonElement,
   ) {
     undoBtn.addEventListener('click', () => app.history.undo());
     redoBtn.addEventListener('click', () => app.history.redo());
+    mergeBtn.addEventListener('click', () => app.history.mergePaints());
     document.addEventListener('keydown', (e) => {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT')) return;
@@ -23,10 +25,17 @@ export class HistoryPanel {
     this.render();
   }
 
+  private label(op: Op): string {
+    if (op.type !== 'paint') return describeOp(op);
+    const slot = this.app.palette[op.color];
+    return `Paint ${op.color === 0 ? 'Base' : slot?.name ?? `slot ${op.color}`} (${describeSelection(op.select)})`;
+  }
+
   render(): void {
     const { history } = this.app;
     this.undoBtn.disabled = history.cursor === 0;
     this.redoBtn.disabled = history.cursor >= history.ops.length;
+    this.mergeBtn.disabled = !history.canMergePaints;
     this.list.replaceChildren();
     const source = el('li', { class: history.cursor === 0 ? 'current' : '' }, [
       el('span', { class: 'label' }, [this.app.source ? `Source: ${this.app.sourceName}` : 'No model']),
@@ -36,7 +45,7 @@ export class HistoryPanel {
     history.ops.forEach((op, i) => {
       const active = i < history.cursor;
       const item = el('li', { class: [i === history.cursor - 1 ? 'current' : '', active ? '' : 'undone'].join(' ').trim() }, [
-        el('span', { class: 'label' }, [describeOp(op)]),
+        el('span', { class: 'label' }, [this.label(op)]),
       ]);
       const del = el('button', { class: 'del', title: 'Delete this step' }, ['×']);
       del.addEventListener('click', (e) => {
@@ -48,7 +57,7 @@ export class HistoryPanel {
       this.list.append(item);
     });
     if (this.app.preview) {
-      this.list.append(el('li', { class: 'preview' }, [el('span', { class: 'label' }, [`Preview: ${describeOp(this.app.preview)}`])]));
+      this.list.append(el('li', { class: 'preview' }, [el('span', { class: 'label' }, [`Preview: ${this.label(this.app.preview)}`])]));
     }
   }
 }
