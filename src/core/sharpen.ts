@@ -8,28 +8,25 @@ const MIN_SPAN = 1e-6;
 
 export type SplitResult = { mesh: TriMesh; source: Uint32Array; inside: Uint8Array };
 
-function triangleAreas(m: TriMesh): Float32Array {
-  const p = m.positions, idx = m.indices;
-  const out = new Float32Array(idx.length / 3);
-  for (let t = 0; t < out.length; t++) {
-    const a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
-    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
-    const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
-    out[t] = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
-  }
-  return out;
+function cornerAngle(p: Float32Array, idx: Uint32Array, t: number, v: number): number {
+  let k = 0;
+  while (k < 2 && idx[t * 3 + k] !== v) k++;
+  const a = idx[t * 3 + k] * 3, b = idx[t * 3 + ((k + 1) % 3)] * 3, c = idx[t * 3 + ((k + 2) % 3)] * 3;
+  const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2];
+  const vx = p[c] - p[a], vy = p[c + 1] - p[a + 1], vz = p[c + 2] - p[a + 2];
+  const cross = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+  return Math.atan2(cross, ux * vx + uy * vy + uz * vz);
 }
 
 /**
- * Per-corner selected-area fraction minus 0.5, 3 values per triangle. A corner counts only the
- * incident triangles whose normal lies within 40 degrees of the triangle's own normal, so a
- * boundary on a sharp crease stays on the crease.
+ * Per-corner selected fraction minus 0.5, 3 values per triangle, weighting each incident triangle
+ * by its corner angle at the vertex. A corner counts only the incident triangles whose normal lies
+ * within 40 degrees of the triangle's own normal, so a boundary on a sharp crease stays on the crease.
  */
 export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32Array, vt: VertexTriangles): Float32Array {
-  const idx = m.indices;
-  const areas = triangleAreas(m);
+  const idx = m.indices, p = m.positions;
   const out = new Float32Array(idx.length);
-  for (let t = 0; t < areas.length; t++) {
+  for (let t = 0; t < idx.length / 3; t++) {
     const nx = normals[t * 3], ny = normals[t * 3 + 1], nz = normals[t * 3 + 2];
     for (let k = 0; k < 3; k++) {
       const v = idx[t * 3 + k];
@@ -37,8 +34,9 @@ export function fractionField(m: TriMesh, selected: Uint8Array, normals: Float32
       for (let j = vt.offsets[v]; j < vt.offsets[v + 1]; j++) {
         const n = vt.incident[j];
         if (normals[n * 3] * nx + normals[n * 3 + 1] * ny + normals[n * 3 + 2] * nz < SMOOTH_COS) continue;
-        total += areas[n];
-        if (selected[n]) picked += areas[n];
+        const w = cornerAngle(p, idx, n, v);
+        total += w;
+        if (selected[n]) picked += w;
       }
       out[t * 3 + k] = total > 0 ? picked / total - 0.5 : selected[t] ? 0.5 : -0.5;
     }
@@ -56,7 +54,8 @@ export function planeField(m: TriMesh, z: number): Float32Array {
 
 /**
  * Splits every triangle whose field changes sign along the 0 iso-line. Each crossed edge gets one
- * new vertex shared by both adjacent triangles. `source` maps output triangles to input triangles;
+ * new vertex shared by both adjacent triangles. A crossing within 2% of either endpoint is not split,
+ * so the contour snaps to that vertex. `source` maps output triangles to input triangles;
  * `inside` marks output triangles whose centroid field value is positive. Returns the input arrays
  * by reference when no edge is crossed.
  */
@@ -70,7 +69,8 @@ export function splitByField(m: TriMesh, field: Float32Array): SplitResult {
     if (!(fu * fv < 0) || Math.abs(fu - fv) < MIN_SPAN) return;
     const key = u < v ? u * numVert + v : v * numVert + u;
     if (edgeVertex.has(key)) return;
-    const t = Math.min(MAX_PARAM, Math.max(MIN_PARAM, fu / (fu - fv)));
+    const t = fu / (fu - fv);
+    if (t < MIN_PARAM || t > MAX_PARAM) return;
     edgeVertex.set(key, numVert + added.length / 3);
     for (let k = 0; k < 3; k++) added.push(p[u * 3 + k] + (p[v * 3 + k] - p[u * 3 + k]) * t);
   };

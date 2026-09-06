@@ -147,4 +147,31 @@ describe('sharpen', () => {
     const { mesh, source } = splitByField(m, planeField(m, 5));
     for (let t = 0; t < source.length; t++) expect(mesh.colors![t]).toBe(m.colors[source[t]]);
   });
+
+  it('a crossing within 2% of a vertex is not split', () => {
+    const m: TriMesh = {
+      positions: Float32Array.from([0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 2, 0]),
+      indices: Uint32Array.from([0, 1, 2, 0, 2, 3]),
+    };
+    const near = splitByField(m, Float32Array.from([1, -0.01, -1, 1, -1, -1]));
+    expect(near.mesh.positions.length / 3).toBe(6);
+    for (let v = 4; v < 6; v++) expect(near.mesh.positions[v * 3 + 1]).toBeGreaterThan(0.5);
+    expect(Array.from(near.source).filter((s) => s === 0).length).toBe(2);
+    expect(Array.from(near.source).filter((s) => s === 1).length).toBe(3);
+    const none = splitByField(m, Float32Array.from([1, -0.01, -0.01, 1, -0.01, -0.01]));
+    expect(none.mesh.indices).toBe(m.indices);
+    expect(Array.from(none.inside)).toEqual([1, 1]);
+  });
+
+  it('fractionField weights corners by angle so a thin sliver does not pull the contour', () => {
+    const m: TriMesh = {
+      positions: Float32Array.from([0, 0, 0, 10, 0, 0, 10, 10, 0, 0, 10, 0, 0.5, 0.25, 0]),
+      indices: Uint32Array.from([0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4]),
+    };
+    const selected = Uint8Array.from([1, 0, 0, 0]);
+    const field = fractionField(m, selected, triangleNormals(m), vertexTriangles(m));
+    const at4 = field[2] + 0.5;
+    expect(at4).toBeGreaterThan(0.35);
+    expect(at4).toBeLessThan(0.5);
+  });
 });
