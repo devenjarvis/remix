@@ -401,6 +401,16 @@ describe('paint gestures', () => {
     expect(only(slotsWhere(flipped, (n) => !top(n)), 1)).toBe(true);
   });
 
+  it('invert applies to every part, so a part no region gesture named is painted whole', async () => {
+    const two = cube().add(manifold().Manifold.cube([10, 10, 10]).translate([20, 0, 0]));
+    const shells = await applyOp([two], { id: 's', type: 'split', keep: 'all' }, ctx);
+    const out = await applyOp(shells, op(2, [topFill(), { kind: 'invert' }]), ctx);
+    const first = fromManifold(out[0]);
+    expect(only(slotsWhere(first, top), 0)).toBe(true);
+    expect(only(slotsWhere(first, (n) => !top(n)), 2)).toBe(true);
+    expect(fromManifold(out[1]).colors!.every((c) => c === 2)).toBe(true);
+  });
+
   it('grow and shrink change the painted band on a refined cube', async () => {
     const parts = await refinedCube();
     const brush = (radius: number): Selection => ({ kind: 'brush', part: 0, points: [[5, 5, 10]], normals: [[0, 0, 1]], radius });
