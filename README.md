@@ -17,6 +17,12 @@ npm test
 npm run build
 ```
 
+## Deploy
+
+The site is live at https://devenjarvis.github.io/remix/. A push to `main` runs the workflow in `.github/workflows/deploy.yml`, which typechecks, tests, builds, and publishes `dist/` to GitHub Pages. Pull requests run the same checks without deploying.
+
+`npm run build` writes a self-contained `dist/` folder with relative asset URLs, so any static host can serve it from any path.
+
 ## Stack
 
 - Vite + TypeScript
