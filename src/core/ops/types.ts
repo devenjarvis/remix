@@ -8,9 +8,7 @@ type OpBase = { id: string; type: string };
 
 export type ScaleOp = OpBase & { type: 'scale'; factors: Vec3 };
 export type MirrorOp = OpBase & { type: 'mirror'; axis: Axis };
-export type RotateOp = OpBase & { type: 'rotate'; axis: Axis; degrees: number };
-export type LayFlatOp = OpBase & { type: 'layflat'; normal: Vec3 };
-export type CutOp = OpBase & { type: 'cut'; axis: Axis; offset: number; keep: 'both' | 'below' | 'above' };
+export type CutOp = OpBase & { type: 'cut'; normal: Vec3; offset: number; keep: 'both' | 'below' | 'above' };
 export type SplitOp = OpBase & { type: 'split'; keep: number[] | 'all' };
 export type RefineOp = OpBase & { type: 'refine'; length: number };
 
@@ -81,7 +79,7 @@ export function gesturePart(sel: Selection): number | null {
 /** `edges` 'smooth' splits boundary triangles along the selection contour; absent replays as 'triangles'. */
 export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection; edges?: 'smooth' | 'triangles' };
 
-export type Op = ScaleOp | MirrorOp | RotateOp | LayFlatOp | CutOp | SplitOp | RefineOp | BooleanOp | TextOp | PaintOp;
+export type Op = ScaleOp | MirrorOp | CutOp | SplitOp | RefineOp | BooleanOp | TextOp | PaintOp;
 
 export type OpContext = { manifold: ManifoldToplevel; font?: unknown };
 
@@ -112,12 +110,8 @@ export function describeOp(op: Op): string {
     }
     case 'mirror':
       return `Mirror ${op.axis.toUpperCase()}`;
-    case 'rotate':
-      return `Rotate ${op.axis.toUpperCase()} ${fmt(op.degrees)}°`;
-    case 'layflat':
-      return 'Lay flat';
     case 'cut':
-      return `Cut ${op.axis.toUpperCase()} at ${fmt(op.offset)} mm` + (op.keep === 'both' ? '' : ` (keep ${op.keep})`);
+      return `Cut [${op.normal.map(fmt).join(', ')}] at ${fmt(op.offset)} mm` + (op.keep === 'both' ? '' : ` (keep ${op.keep})`);
     case 'split':
       return op.keep === 'all' ? 'Split parts' : `Split (keep ${op.keep.length})`;
     case 'boolean': {

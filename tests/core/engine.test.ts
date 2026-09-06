@@ -19,7 +19,7 @@ describe('engine cache lifecycle', () => {
     engine.setSource(unweldedCube(10));
     const h = new History();
     h.push({ id: '1', type: 'scale', factors: [2, 2, 2] });
-    h.push({ id: '2', type: 'cut', axis: 'z', offset: 5, keep: 'both' });
+    h.push({ id: '2', type: 'cut', normal: [0, 0, 1], offset: 5, keep: 'both' });
     h.push({ id: '3', type: 'text', text: 'OK', height: 8, depth: 1, mode: 'emboss', origin: [10, 0, 9], normal: [0, -1, 0], rotation: 0 });
     const r = await engine.evaluate(h);
     expect(r.error).toBeUndefined();
@@ -45,7 +45,7 @@ describe('engine cache lifecycle', () => {
   it('survives undo of a union that passed parts through', async () => {
     engine.setSource(unweldedCube(10));
     const h = new History();
-    h.push({ id: '1', type: 'cut', axis: 'x', offset: 5, keep: 'both' });
+    h.push({ id: '1', type: 'cut', normal: [1, 0, 0], offset: 5, keep: 'both' });
     h.push({ id: '2', type: 'boolean', mode: 'union', tool: { kind: 'box', size: [2, 2, 2] }, matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1] });
     expect((await engine.evaluate(h)).error).toBeUndefined();
     h.undo();

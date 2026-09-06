@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
-import type { Axis } from '../core/ops/types';
 import type { Bounds, TriMesh, Vec3 } from '../core/types';
 import type { FaceHit, ViewportLike } from './app';
 import { pickFace } from './pick';
@@ -13,7 +12,6 @@ THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 
 const BG = 0x1b1d22;
 const PALETTE = [0xb8c4d6, 0xe6a86b, 0x8fcf8a, 0xd98ad6, 0x7fc8d8, 0xe0d072];
-const AXIS_INDEX: Record<Axis, 0 | 1 | 2> = { x: 0, y: 1, z: 2 };
 const HIGHLIGHT = 0.5;
 const HIGHLIGHT_TINT = new THREE.Color(0x5aa9ff);
 const SKETCH_SPACING_PX = 3;
@@ -249,13 +247,13 @@ export class Viewport implements ViewportLike {
     this.requestRender();
   }
 
-  showPlane(axis: Axis, offset: number, extent: Bounds): void {
+  showPlane(normal: Vec3, offset: number, extent: Bounds): void {
     this.hidePlane();
-    const i = AXIS_INDEX[axis];
-    const others = [0, 1, 2].filter((k) => k !== i) as (0 | 1 | 2)[];
-    const w = extent.size[others[0]] * 1.2 + 10;
-    const h = extent.size[others[1]] * 1.2 + 10;
-    const geo = new THREE.PlaneGeometry(w, h);
+    const n = new THREE.Vector3(...normal);
+    if (n.lengthSq() === 0) return;
+    n.normalize();
+    const span = Math.hypot(...extent.size) * 1.2 + 10;
+    const geo = new THREE.PlaneGeometry(span, span);
     const mat = new THREE.MeshBasicMaterial({
       color: 0x5aa9ff,
       transparent: true,
@@ -264,11 +262,9 @@ export class Viewport implements ViewportLike {
       depthWrite: false,
     });
     const plane = new THREE.Mesh(geo, mat);
-    const center = [0, 1, 2].map((k) => (extent.min[k] + extent.max[k]) / 2);
-    center[i] = offset;
-    plane.position.set(center[0], center[1], center[2]);
-    if (axis === 'x') plane.rotation.y = Math.PI / 2;
-    else if (axis === 'y') plane.rotation.x = Math.PI / 2;
+    const center = new THREE.Vector3(...([0, 1, 2].map((k) => (extent.min[k] + extent.max[k]) / 2) as Vec3));
+    plane.position.copy(center).addScaledVector(n, offset - center.dot(n));
+    plane.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
     this.plane = plane;
     this.scene.add(plane);
     this.requestRender();

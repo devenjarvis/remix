@@ -137,13 +137,8 @@ export function validateOp(v: unknown): Op {
       return { id, type: 'scale', factors: o.factors };
     case 'mirror':
       return { id, type: 'mirror', axis: axis(o.axis) };
-    case 'rotate':
-      return { id, type: 'rotate', axis: axis(o.axis), degrees: num(o.degrees, 'degrees') };
-    case 'layflat':
-      if (!isVec3(o.normal) || Math.hypot(...o.normal) === 0) fail('layflat normal must be a non-zero vector');
-      return { id, type: 'layflat', normal: o.normal };
     case 'cut':
-      return { id, type: 'cut', axis: axis(o.axis), offset: num(o.offset, 'offset'), keep: oneOf(o.keep, ['both', 'below', 'above'] as const, 'keep') };
+      return { id, type: 'cut', normal: unitVec(o.normal, 'cut normal'), offset: num(o.offset, 'offset'), keep: oneOf(o.keep, ['both', 'below', 'above'] as const, 'keep') };
     case 'refine':
       return { id, type: 'refine', length: num(o.length, 'length', 0.01) };
     case 'split':

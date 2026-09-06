@@ -114,7 +114,7 @@ describe('history + engine', () => {
   it('describes ops', () => {
     expect(describeOp(scale(2))).toBe('Scale 2×');
     expect(describeOp({ id: 'a', type: 'scale', factors: [1, 2, 3] })).toBe('Scale 1×, 2×, 3×');
-    expect(describeOp({ id: 'a', type: 'cut', axis: 'z', offset: 5, keep: 'both' })).toBe('Cut Z at 5 mm');
+    expect(describeOp({ id: 'a', type: 'cut', normal: [0, 0, 1], offset: 5, keep: 'both' })).toBe('Cut [0, 0, 1] at 5 mm');
   });
 });
 

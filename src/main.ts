@@ -8,7 +8,6 @@ import { exportModel, type ExportFormat } from './io/save';
 import { AppState } from './ui/app';
 import { baseName, download } from './ui/download';
 import { pickFile, readModelFile, wireFileOpen } from './ui/files';
-import { buildLayFlatForm } from './ui/forms/layflat';
 import { registerBooleanForm, registerCutSplitForms, registerPaintForm, registerRefineForm, registerTextForm, registerTransformForms } from './ui/forms';
 import { HistoryPanel } from './ui/history';
 import { Panel } from './ui/panel';
@@ -31,7 +30,6 @@ async function boot(): Promise<void> {
 
   const panel = new Panel(app, $('op-buttons'), $('op-form'));
   registerTransformForms(panel);
-  panel.register('layflat', 'Lay Flat', buildLayFlatForm, { needsManifold: true });
   registerCutSplitForms(panel);
   registerBooleanForm(panel);
   registerTextForm(panel);

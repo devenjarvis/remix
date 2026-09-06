@@ -13,7 +13,7 @@ describe('AppState refresh', () => {
     app.setSource(unweldedCube(10), 'cube.stl');
     const runs: Promise<void>[] = [];
     for (let i = 0; i < 5; i++) {
-      app.history.push({ id: String(i), type: 'cut', axis: 'z', offset: 5 - i * 0.5, keep: 'both' });
+      app.history.push({ id: String(i), type: 'cut', normal: [0, 0, 1], offset: 5 - i * 0.5, keep: 'both' });
       runs.push(app.refresh());
     }
     app.history.pushAll([
@@ -46,7 +46,7 @@ describe('AppState preview', () => {
     expect(app.preview).toBeNull();
     expect(app.bounds?.size).toEqual([10, 10, 10]);
 
-    app.setPreview({ id: 'q', type: 'rotate', axis: 'z', degrees: NaN }, 0);
+    app.setPreview({ id: 'q', type: 'scale', factors: [NaN, 1, 1] }, 0);
     await new Promise((r) => setTimeout(r, 5));
     expect(app.preview).toBeNull();
 

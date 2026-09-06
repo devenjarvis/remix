@@ -48,7 +48,7 @@ describe('paint op', () => {
     const m = fromManifold(parts[0]);
     expect(only(slotsWhere(m, (n) => n[2] > 0.9), 1)).toBe(true);
     expect(only(slotsWhere(m, (n) => n[2] < 0.9), 0)).toBe(true);
-    const halves = await applyOp(parts, { id: 'c', type: 'cut', axis: 'x', offset: 5, keep: 'both' }, ctx);
+    const halves = await applyOp(parts, { id: 'c', type: 'cut', normal: [1, 0, 0], offset: 5, keep: 'both' }, ctx);
     expect(halves.length).toBe(2);
     for (const h of halves.map(fromManifold)) {
       expect(only(slotsWhere(h, (n) => n[2] > 0.9), 1)).toBe(true);
@@ -207,7 +207,7 @@ describe('deferred paint', () => {
     r = await engine.evaluate(h);
     expect(only(slotsWhere(r.parts[0], (n) => n[2] > 0.9), 1)).toBe(true);
     expect(only(slotsWhere(r.parts[0], (n) => n[2] < 0.9), 0)).toBe(true);
-    h.push({ id: 'c', type: 'cut', axis: 'z', offset: 5, keep: 'both' });
+    h.push({ id: 'c', type: 'cut', normal: [0, 0, 1], offset: 5, keep: 'both' });
     r = await engine.evaluate(h);
     expect(r.error).toBeUndefined();
     expect(r.parts.length).toBe(2);
@@ -317,7 +317,7 @@ describe('smooth edges', () => {
     expect(only(slotsWhere(m, (n, c) => wall(n, c) && c[2] > 12.5), 3)).toBe(true);
     expect(only(slotsWhere(m, (n, c) => wall(n, c) && c[2] < 12.5), 0)).toBe(true);
     expect(m.positions.some((_, i) => i % 3 === 2 && Math.abs(m.positions[i] - 12.5) < 1e-5)).toBe(true);
-    const halves = await applyOp(painted, { id: 'c', type: 'cut', axis: 'x', offset: 5, keep: 'both' }, ctx);
+    const halves = await applyOp(painted, { id: 'c', type: 'cut', normal: [1, 0, 0], offset: 5, keep: 'both' }, ctx);
     expect(halves.length).toBe(2);
     for (const h of halves) {
       expect(h.status()).toBe('NoError');

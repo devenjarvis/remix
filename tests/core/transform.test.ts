@@ -41,9 +41,4 @@ describe('transform ops', () => {
     expect(r.min).toEqual([-10, 0, 0]);
     expect(r.max).toEqual([0, 10, 10]);
   });
-
-  it('rotates 90 about Z', async () => {
-    const r = await run(await box(), { id: newId(), type: 'rotate', axis: 'z', degrees: 90 });
-    expect(r.size).toEqual([20, 10, 30]);
-  });
 });

@@ -19,7 +19,10 @@ describe('recipe validation', () => {
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'scale', factors: [1, NaN, 1] }] })).toThrow(/scale factors/);
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'boolean', mode: 'union', tool: { kind: 'box', size: [1, 1, 1] }, matrix: [1, 2] }] })).toThrow(/matrix/);
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'boolean', mode: 'union', tool: { kind: 'mesh', name: 'm', positions: [0, 0, 0], indices: [0, 1, 2] }, matrix: Array(16).fill(0) }] })).toThrow(/index out of range/);
-    expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'cut', axis: 'w', offset: 1, keep: 'both' }] })).toThrow(/axis/);
+    expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'cut', axis: 'z', offset: 1, keep: 'both' }] })).toThrow(/normal/);
+    expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'cut', normal: [0, 0, 0], offset: 1, keep: 'both' }] })).toThrow(/normal/);
+    expect(() => validateOp({ id: 'a', type: 'rotate', axis: 'z', degrees: 90 })).toThrow(/unknown op type rotate/);
+    expect(() => validateOp({ id: 'a', type: 'layflat', normal: [0, 0, 1] })).toThrow(/unknown op type layflat/);
     expect(() => validateRecipe({ version: 1, ops: [{ id: 'a', type: 'nope' }] })).toThrow(/unknown op type/);
     expect(() => validateRecipe({ version: 1, ops: [{ type: 'mirror', axis: 'x' }] })).toThrow(/id/);
   });
@@ -28,7 +31,7 @@ describe('recipe validation', () => {
 describe('History.push validation', () => {
   it('rejects NaN from a blank form field', () => {
     const h = new History();
-    expect(() => h.push({ id: 'a', type: 'rotate', axis: 'z', degrees: NaN })).toThrow(/degrees/);
+    expect(() => h.push({ id: 'a', type: 'cut', normal: [0, 0, 1], offset: NaN, keep: 'both' })).toThrow(/offset/);
     expect(h.ops.length).toBe(0);
   });
 });
