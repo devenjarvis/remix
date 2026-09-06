@@ -40,14 +40,28 @@ export type TextOp = OpBase & {
   color?: number;
 };
 
-/** A single region; `multi` holds a list applied in order and may not nest. */
+export type GestureMode = 'add' | 'subtract';
+
+/**
+ * One gesture. Region gestures carry `mode` (absent replays as add); `invert`, `grow`, and
+ * `shrink` transform the running set. `multi` holds a list applied in order and may not nest.
+ */
 export type Selection =
-  | { kind: 'fill'; part: number; point: Vec3; normal: Vec3; angle: number; rule?: 'seed' | 'crease' }
-  | { kind: 'brush'; part: number; points: Vec3[]; normals: Vec3[]; radius: number }
-  | { kind: 'height'; min: number; max: number }
-  | { kind: 'part'; index: number }
-  | { kind: 'all' }
+  | { kind: 'fill'; part: number; point: Vec3; normal: Vec3; angle: number; rule?: 'seed' | 'crease'; mode?: GestureMode; dam?: boolean }
+  | { kind: 'brush'; part: number; points: Vec3[]; normals: Vec3[]; radius: number; mode?: GestureMode; dam?: boolean }
+  | { kind: 'segment'; part: number; point: Vec3; normal: Vec3; tolerance: number; mode?: GestureMode }
+  | { kind: 'lasso'; part: number; eye: Vec3; polygon: Vec3[]; mode?: GestureMode }
+  | { kind: 'height'; min: number; max: number; mode?: GestureMode }
+  | { kind: 'part'; index: number; mode?: GestureMode }
+  | { kind: 'all'; mode?: GestureMode }
+  | { kind: 'invert' }
+  | { kind: 'grow'; distance: number }
+  | { kind: 'shrink'; distance: number }
   | { kind: 'multi'; selections: Selection[] };
+
+export type RegionSelection = Exclude<Selection, { kind: 'invert' | 'grow' | 'shrink' | 'multi' }>;
+
+export const isRegion = (s: Selection): s is RegionSelection => s.kind !== 'invert' && s.kind !== 'grow' && s.kind !== 'shrink' && s.kind !== 'multi';
 
 /** `edges` 'smooth' splits boundary triangles along the selection contour; absent replays as 'triangles'. */
 export type PaintOp = OpBase & { type: 'paint'; color: number; select: Selection; edges?: 'smooth' | 'triangles' };
@@ -64,12 +78,15 @@ export function newId(): string {
 
 const fmt = (n: number) => String(Math.round(n * 1000) / 1000);
 
-/** "fill", or for a multi selection a count per kind such as "2 fills, 1 height". */
+/** "fill", or for a multi selection a count per kind such as "2 segments, -1 lasso, 1 grow"; subtract gestures carry a minus. */
 export function describeSelection(sel: Selection): string {
-  if (sel.kind !== 'multi') return sel.kind;
+  if (sel.kind !== 'multi') return (isRegion(sel) && sel.mode === 'subtract' ? '-' : '') + sel.kind;
   const counts = new Map<string, number>();
-  for (const s of sel.selections) counts.set(s.kind, (counts.get(s.kind) ?? 0) + 1);
-  return [...counts].map(([kind, n]) => `${n} ${kind}${n > 1 && kind !== 'all' ? 's' : ''}`).join(', ');
+  for (const s of sel.selections) {
+    const key = (isRegion(s) && s.mode === 'subtract' ? '-' : '') + s.kind;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts].map(([kind, n]) => `${kind.startsWith('-') ? '-' : ''}${n} ${kind.replace(/^-/, '')}${n > 1 && kind !== 'all' && kind !== '-all' ? 's' : ''}`).join(', ');
 }
 
 export function describeOp(op: Op): string {

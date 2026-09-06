@@ -24,8 +24,8 @@ function selectTriangles(mesh: TriMesh, sel: Selection): Uint32Array | 'all' {
     case 'part':
     case 'all':
       return 'all';
-    case 'multi':
-      throw new Error('multi selections are expanded before selection');
+    default:
+      throw new Error(`${sel.kind} selections are not supported yet`);
   }
 }
 

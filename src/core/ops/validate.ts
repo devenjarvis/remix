@@ -1,4 +1,4 @@
-import type { Op, Recipe, Selection, ToolBody } from './types';
+import type { GestureMode, Op, Recipe, Selection, ToolBody } from './types';
 import { HEX_RE, MAX_SLOTS, type PaletteSlot } from '../color';
 
 const AXES = ['x', 'y', 'z'];
@@ -41,6 +41,23 @@ function unitVec(v: unknown, what: string): [number, number, number] {
   return v;
 }
 
+function mode(s: Record<string, unknown>): GestureMode | undefined {
+  return s.mode === undefined ? undefined : oneOf(s.mode, ['add', 'subtract'] as const, 'mode');
+}
+
+function dam(s: Record<string, unknown>): boolean | undefined {
+  if (s.dam !== undefined && typeof s.dam !== 'boolean') fail('dam must be a boolean');
+  return s.dam as boolean | undefined;
+}
+
+function withFlags<T extends Selection>(sel: T, s: Record<string, unknown>, allowDam = false): T {
+  const m = mode(s);
+  if (m !== undefined) (sel as { mode?: GestureMode }).mode = m;
+  const d = allowDam ? dam(s) : undefined;
+  if (d !== undefined) (sel as { dam?: boolean }).dam = d;
+  return sel;
+}
+
 function selection(v: unknown, nested = false): Selection {
   if (!v || typeof v !== 'object') fail('paint select must be an object');
   const s = v as Record<string, unknown>;
@@ -49,7 +66,7 @@ function selection(v: unknown, nested = false): Selection {
       if (!isVec3(s.point)) fail('fill point must be a vector');
       const sel: Selection = { kind: 'fill', part: index(s.part, 'part'), point: s.point, normal: unitVec(s.normal, 'fill normal'), angle: num(s.angle, 'angle', 0) };
       if (s.rule !== undefined) sel.rule = oneOf(s.rule, ['seed', 'crease'] as const, 'fill rule');
-      return sel;
+      return withFlags(sel, s, true);
     }
     case 'multi':
       if (nested) fail('multi selections may not nest');
@@ -59,18 +76,35 @@ function selection(v: unknown, nested = false): Selection {
       if (!Array.isArray(s.points) || !s.points.length || !s.points.every(isVec3)) fail('brush points must be a non-empty list of vectors');
       if (!Array.isArray(s.normals) || s.normals.length !== s.points.length) fail('brush normals must match points');
       const normals = s.normals.map((n) => unitVec(n, 'brush normal'));
-      return { kind: 'brush', part: index(s.part, 'part'), points: s.points as [number, number, number][], normals, radius: num(s.radius, 'radius', 0.001) };
+      return withFlags({ kind: 'brush', part: index(s.part, 'part'), points: s.points as [number, number, number][], normals, radius: num(s.radius, 'radius', 0.001) }, s, true);
+    }
+    case 'segment': {
+      if (!isVec3(s.point)) fail('segment point must be a vector');
+      return withFlags({ kind: 'segment', part: index(s.part, 'part'), point: s.point, normal: unitVec(s.normal, 'segment normal'), tolerance: num(s.tolerance, 'tolerance', 0) }, s);
+    }
+    case 'lasso': {
+      if (!isVec3(s.eye)) fail('lasso eye must be a vector');
+      if (!Array.isArray(s.polygon) || s.polygon.length < 3 || !s.polygon.every(isVec3)) fail('lasso polygon must list at least 3 vectors');
+      return withFlags({ kind: 'lasso', part: index(s.part, 'part'), eye: s.eye, polygon: s.polygon as [number, number, number][] }, s);
     }
     case 'height': {
       const min = num(s.min, 'min');
       const max = num(s.max, 'max');
       if (max < min) fail('height max must be at least min');
-      return { kind: 'height', min, max };
+      return withFlags({ kind: 'height', min, max }, s);
     }
     case 'part':
-      return { kind: 'part', index: index(s.index, 'index') };
+      return withFlags({ kind: 'part', index: index(s.index, 'index') }, s);
     case 'all':
-      return { kind: 'all' };
+      return withFlags({ kind: 'all' }, s);
+    case 'invert':
+      return { kind: 'invert' };
+    case 'grow':
+    case 'shrink': {
+      const distance = num(s.distance, 'distance');
+      if (distance <= 0) fail('distance must be positive');
+      return { kind: s.kind, distance };
+    }
     default:
       return fail(`unknown selection kind ${String(s.kind)}`);
   }
