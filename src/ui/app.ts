@@ -1,6 +1,6 @@
 import type { Engine, Result } from '../core/engine';
 import type { History } from '../core/history';
-import type { Axis, Op } from '../core/ops/types';
+import type { Op } from '../core/ops/types';
 import type { Bounds, TriMesh, Vec3 } from '../core/types';
 import { bounds, mergeMeshes, placeOnBed } from '../core/trimesh';
 import { repairSmallDefects, type RepairReport } from '../core/repair';
@@ -12,7 +12,7 @@ export type FaceHit = { point: Vec3; normal: Vec3; partIndex: number; triangle: 
 /** Implemented by src/ui/viewport.ts. Kept as an interface so forms do not import three. */
 export interface ViewportLike {
   setParts(parts: TriMesh[]): void;
-  showPlane(axis: Axis, offset: number, extent: Bounds): void;
+  showPlane(normal: Vec3, offset: number, extent: Bounds): void;
   hidePlane(): void;
   /** Registers a face-pick listener; returns an unsubscribe. Picks fire only while pick mode is on. */
   onFacePick(cb: (hit: FaceHit) => void): () => void;

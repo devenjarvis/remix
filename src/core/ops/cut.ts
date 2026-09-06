@@ -1,5 +1,5 @@
 import type { Manifold } from 'manifold-3d';
-import type { Vec3 } from '../types';
+import type { Bounds, Vec3 } from '../types';
 import { registerOp } from './registry';
 import type { Axis, CutOp, SplitOp } from './types';
 
@@ -21,8 +21,28 @@ function sortByMin(parts: Manifold[]): Manifold[] {
   return keyed.map((k) => k.p);
 }
 
+function unit(v: Vec3): Vec3 {
+  const len = Math.hypot(...v) || 1;
+  return [v[0] / len, v[1] / len, v[2] / len];
+}
+
+/** Lowest and highest signed distance from the origin to the box, measured along `normal`. */
+export function offsetRange(box: Bounds, normal: Vec3): [number, number] {
+  const n = unit(normal);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const x of [box.min[0], box.max[0]])
+    for (const y of [box.min[1], box.max[1]])
+      for (const z of [box.min[2], box.max[2]]) {
+        const d = x * n[0] + y * n[1] + z * n[2];
+        lo = Math.min(lo, d);
+        hi = Math.max(hi, d);
+      }
+  return [lo, hi];
+}
+
 registerOp<CutOp>('cut', (input, op) => {
-  const normal = axisNormal[op.axis];
+  const normal = unit(op.normal);
   const below: Manifold[] = [];
   const above: Manifold[] = [];
   for (const m of input) {
