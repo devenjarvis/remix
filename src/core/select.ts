@@ -165,29 +165,31 @@ function collect(visited: Uint8Array): Uint32Array {
  * Flood from seed. Rule 'seed' crosses an edge only when the neighbor's normal is within
  * angleDeg of the seed's normal; rule 'crease' compares the neighbor with the triangle it
  * was reached from, so the flood follows smooth curvature and stops at sharp edges.
- * Returns sorted triangle indices.
+ * Blocked triangles are never entered except as the seed. Returns sorted triangle indices.
  */
-export function selectFill(m: TriMesh, adj: Int32Array, seed: number, angleDeg: number, rule: FillRule = 'seed'): Uint32Array {
+export function selectFill(m: TriMesh, adj: Int32Array, seed: number, angleDeg: number, rule: FillRule = 'seed', blocked?: Uint8Array): Uint32Array {
   const visited = new Uint8Array(m.indices.length / 3);
   if (seed < 0 || seed >= visited.length) return new Uint32Array(0);
   const normals = triangleNormals(m);
   const minCos = Math.cos((angleDeg * Math.PI) / 180);
   const dot = (a: number, b: number) => normals[a * 3] * normals[b * 3] + normals[a * 3 + 1] * normals[b * 3 + 1] + normals[a * 3 + 2] * normals[b * 3 + 2];
-  flood(m, adj, seed, (t, from) => dot(t, rule === 'crease' ? from : seed) >= minCos, visited);
+  flood(m, adj, seed, (t, from) => (t === seed || !blocked || !blocked[t]) && dot(t, rule === 'crease' ? from : seed) >= minCos, visited);
   return collect(visited);
 }
 
-/** For each (seeds[i], points[i]) pair, BFS from seeds[i] over triangles whose centroid lies within radius of points[i]; union of all, sorted. Seeds equal to -1 are skipped. */
-export function selectBrush(m: TriMesh, adj: Int32Array, seeds: number[], points: Vec3[], radius: number): Uint32Array {
+/** For each (seeds[i], points[i]) pair, BFS from seeds[i] over triangles whose centroid lies within radius of points[i]; union of all, sorted. Seeds equal to -1 are skipped. Blocked triangles are never entered except as a seed. */
+export function selectBrush(m: TriMesh, adj: Int32Array, seeds: number[], points: Vec3[], radius: number, blocked?: Uint8Array): Uint32Array {
   const visited = new Uint8Array(m.indices.length / 3);
   const r2 = radius * radius;
   const c: Vec3 = [0, 0, 0];
   const local = new Uint8Array(visited.length);
   for (let i = 0; i < seeds.length; i++) {
     const q = points[i];
-    if (seeds[i] < 0 || !q) continue;
+    const seed = seeds[i];
+    if (seed < 0 || !q) continue;
     local.fill(0);
-    flood(m, adj, seeds[i], (t) => {
+    flood(m, adj, seed, (t) => {
+      if (t !== seed && blocked && blocked[t]) return false;
       triangleCentroid(m, t, c);
       const dx = c[0] - q[0], dy = c[1] - q[1], dz = c[2] - q[2];
       return dx * dx + dy * dy + dz * dz <= r2;
@@ -206,4 +208,87 @@ export function selectHeight(m: TriMesh, min: number, max: number): Uint32Array 
     if (z >= min && z <= max) visited[t] = 1;
   }
   return collect(visited);
+}
+
+/** Triangles within `distance` of the selection by surface path, measured centroid to centroid over adjacency; the input triangles are always included. */
+export function growSelection(m: TriMesh, adj: Int32Array, selected: Uint8Array, distance: number): Uint8Array {
+  const numTri = m.indices.length / 3;
+  const out = new Uint8Array(numTri);
+  const p = m.positions, idx = m.indices;
+  const cent = new Float32Array(idx.length);
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    cent[t] = (p[a] + p[b] + p[c]) / 3;
+    cent[t + 1] = (p[a + 1] + p[b + 1] + p[c + 1]) / 3;
+    cent[t + 2] = (p[a + 2] + p[b + 2] + p[c + 2]) / 3;
+  }
+  const dist = new Float32Array(numTri).fill(Infinity);
+  let heapT = new Int32Array(1024);
+  let heapD = new Float32Array(1024);
+  let size = 0;
+  const push = (t: number, d: number) => {
+    if (size === heapT.length) {
+      const nt = new Int32Array(size * 2), nd = new Float32Array(size * 2);
+      nt.set(heapT);
+      nd.set(heapD);
+      heapT = nt;
+      heapD = nd;
+    }
+    let i = size++;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (heapD[parent] <= d) break;
+      heapT[i] = heapT[parent];
+      heapD[i] = heapD[parent];
+      i = parent;
+    }
+    heapT[i] = t;
+    heapD[i] = d;
+  };
+  for (let t = 0; t < numTri; t++) {
+    if (!selected[t]) continue;
+    out[t] = 1;
+    dist[t] = 0;
+    push(t, 0);
+  }
+  while (size > 0) {
+    const t = heapT[0], d = heapD[0];
+    size--;
+    if (size > 0) {
+      const lt = heapT[size], ld = heapD[size];
+      let i = 0;
+      for (;;) {
+        let child = i * 2 + 1;
+        if (child >= size) break;
+        if (child + 1 < size && heapD[child + 1] < heapD[child]) child++;
+        if (heapD[child] >= ld) break;
+        heapT[i] = heapT[child];
+        heapD[i] = heapD[child];
+        i = child;
+      }
+      heapT[i] = lt;
+      heapD[i] = ld;
+    }
+    if (d > dist[t]) continue;
+    for (let k = 0; k < 3; k++) {
+      const n = adj[t * 3 + k];
+      if (n < 0) continue;
+      const nd = d + Math.hypot(cent[n * 3] - cent[t * 3], cent[n * 3 + 1] - cent[t * 3 + 1], cent[n * 3 + 2] - cent[t * 3 + 2]);
+      if (nd > distance || nd >= dist[n]) continue;
+      dist[n] = nd;
+      out[n] = 1;
+      push(n, nd);
+    }
+  }
+  return out;
+}
+
+/** Complement of the grown complement: removes every triangle within `distance` of an unselected one. */
+export function shrinkSelection(m: TriMesh, adj: Int32Array, selected: Uint8Array, distance: number): Uint8Array {
+  const numTri = m.indices.length / 3;
+  const complement = new Uint8Array(numTri);
+  for (let t = 0; t < numTri; t++) complement[t] = selected[t] ? 0 : 1;
+  const grown = growSelection(m, adj, complement, distance);
+  for (let t = 0; t < numTri; t++) grown[t] = grown[t] ? 0 : 1;
+  return grown;
 }

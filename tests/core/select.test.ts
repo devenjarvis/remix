@@ -5,10 +5,12 @@ import type { TriMesh, Vec3 } from '../../src/core/types';
 import {
   adjacencyOf,
   buildAdjacency,
+  growSelection,
   nearestTriangle,
   selectBrush,
   selectFill,
   selectHeight,
+  shrinkSelection,
   triangleCentroid,
   triangleNormals,
 } from '../../src/core/select';
@@ -191,5 +193,116 @@ describe('selectFill crease rule', () => {
     const cube = weld(unweldedCube(10));
     expect(selectFill(cube, buildAdjacency(cube), 0, 100, 'crease').length).toBe(12);
     expect(selectFill(cube, buildAdjacency(cube), 0, 60, 'crease').length).toBe(2);
+  });
+});
+
+describe('grow, shrink, and blocked', () => {
+  const center: Vec3 = [5, 5, 10];
+
+  function refinedCube(): TriMesh {
+    return fromManifold(manifold().Manifold.cube([10, 10, 10]).refineToLength(1));
+  }
+
+  function xyDist(m: TriMesh, t: number): number {
+    const c = triangleCentroid(m, t);
+    return Math.hypot(c[0] - center[0], c[1] - center[1]);
+  }
+
+  function topRing(m: TriMesh, inner: number, outer: number): Uint8Array {
+    const normals = triangleNormals(m);
+    const blocked = new Uint8Array(triCount(m));
+    for (let t = 0; t < blocked.length; t++) {
+      const d = xyDist(m, t);
+      if (normals[t * 3 + 2] > 0.9 && d >= inner && d <= outer) blocked[t] = 1;
+    }
+    return blocked;
+  }
+
+  function topDisc(m: TriMesh, radius: number): Uint8Array {
+    const normals = triangleNormals(m);
+    const disc = new Uint8Array(triCount(m));
+    for (let t = 0; t < disc.length; t++) {
+      if (normals[t * 3 + 2] > 0.9 && xyDist(m, t) <= radius) disc[t] = 1;
+    }
+    return disc;
+  }
+
+  it('fill with a blocked ring stops at the ring', () => {
+    const m = refinedCube();
+    const adj = buildAdjacency(m);
+    const seed = nearestTriangle(m, center, [0, 0, 1]);
+    expect(seed).toBeGreaterThanOrEqual(0);
+    const blocked = topRing(m, 2, 3);
+    expect(blocked[seed]).toBe(0);
+    const sel = selectFill(m, adj, seed, 10, 'seed', blocked);
+    expect(Array.from(sel)).toContain(seed);
+    expect(sel.length).toBeGreaterThan(1);
+    for (const t of sel) {
+      expect(blocked[t]).toBe(0);
+      expect(xyDist(m, t)).toBeLessThanOrEqual(3);
+    }
+    expect(selectFill(m, adj, seed, 10, 'seed').length).toBeGreaterThan(sel.length);
+  });
+
+  it('brush respects blocked', () => {
+    const m = refinedCube();
+    const adj = buildAdjacency(m);
+    const seed = nearestTriangle(m, center, [0, 0, 1]);
+    const blocked = topRing(m, 2, 3);
+    const sel = selectBrush(m, adj, [seed], [center], 6, blocked);
+    expect(Array.from(sel)).toContain(seed);
+    for (const t of sel) {
+      expect(blocked[t]).toBe(0);
+      expect(xyDist(m, t)).toBeLessThanOrEqual(3);
+    }
+    const all = new Uint8Array(triCount(m)).fill(1);
+    expect(Array.from(selectBrush(m, adj, [seed], [center], 6, all))).toEqual([seed]);
+    expect(Array.from(selectFill(m, adj, seed, 10, 'seed', all))).toEqual([seed]);
+  });
+
+  it('grow by 3 mm on a refined cube top adds a band and shrink by 3 mm removes it', () => {
+    const m = refinedCube();
+    const adj = buildAdjacency(m);
+    const disc = topDisc(m, 2);
+    const discList = Array.from(disc).map((v, t) => (v ? t : -1)).filter((t) => t >= 0);
+    expect(discList.length).toBeGreaterThan(0);
+    const grown = growSelection(m, adj, disc, 3);
+    expect(grown.length).toBe(disc.length);
+    let added = 0;
+    for (let t = 0; t < grown.length; t++) {
+      if (disc[t]) expect(grown[t]).toBe(1);
+      if (!grown[t] || disc[t]) continue;
+      added++;
+      const c = triangleCentroid(m, t);
+      let nearest = Infinity;
+      for (const s of discList) nearest = Math.min(nearest, dist(c, triangleCentroid(m, s)));
+      expect(nearest).toBeLessThanOrEqual(4.5);
+    }
+    expect(added).toBeGreaterThan(0);
+    const shrunk = shrinkSelection(m, adj, grown, 3);
+    let kept = 0;
+    for (let t = 0; t < shrunk.length; t++) {
+      if (shrunk[t]) {
+        expect(disc[t]).toBe(1);
+        kept++;
+      }
+    }
+    expect(kept).toBeGreaterThan(0);
+  });
+
+  it('shrink to nothing returns an all-zero set', () => {
+    const m = refinedCube();
+    const shrunk = shrinkSelection(m, buildAdjacency(m), topDisc(m, 2), 20);
+    expect(shrunk.length).toBe(triCount(m));
+    expect(shrunk.every((v) => v === 0)).toBe(true);
+  });
+
+  it('grow returns a new array and leaves the input untouched', () => {
+    const m = refinedCube();
+    const disc = topDisc(m, 2);
+    const before = disc.slice();
+    const grown = growSelection(m, buildAdjacency(m), disc, 3);
+    expect(grown).not.toBe(disc);
+    expect(Array.from(disc)).toEqual(Array.from(before));
   });
 });
